@@ -12,7 +12,7 @@ from src.data_fetcher import FMPDataFetcher
 from src.backtester import Backtester
 from src.performance_analysis import PerformanceAnalyzer, StrategyComparison
 from strategies.ma_crossover_atr import MACrossoverATR
-from strategies.bollinger_mean_reversion import BollingerMeanReversion
+from strategies.volume_divergence import VolumeDivergence
 
 
 def test_single_strategy(data, strategy, initial_capital=10000, risk_per_trade=0.02):
@@ -69,19 +69,19 @@ def run_all_strategies(symbol='EURUSD', timeframe='1hour', from_date=None, to_da
 
     print(f"Data range: {data['date'].min()} to {data['date'].max()}")
 
-    # Define strategies to test (only the profitable ones)
+    # Define strategies to test (only the best performers)
     strategies = [
-        # Best performer: MA 20/50
-        # 3.42% return, 60% win rate, Sharpe 6.15
-        MACrossoverATR(fast_period=20, slow_period=50, atr_stop_multiplier=2.0, risk_reward_ratio=2.5),
+        # WINNER: Volume Divergence (best on USD/JPY)
+        # 15.38% return, 70.4% win rate, Sharpe 4.80 (on USD/JPY daily)
+        VolumeDivergence(lookback_period=48, stop_atr_multiplier=1.5, target_atr_multiplier=4.5),
 
         # Conservative: MA 50/200
-        # 2.97% return, 62.5% win rate, Sharpe 7.66, lowest drawdown (0.51%)
+        # 2.97% return, 62.5% win rate, Sharpe 7.66, works on multiple pairs
         MACrossoverATR(fast_period=50, slow_period=200, atr_stop_multiplier=2.5, risk_reward_ratio=3.0),
 
-        # Mean Reversion: Bollinger 2.5σ
-        # 2.23% return, 50% win rate, works in ranging markets
-        BollingerMeanReversion(bb_period=20, bb_std=2.5, use_rsi_filter=True, risk_reward_ratio=2.0),
+        # Fast Trend: MA 20/50
+        # 3.42% return, 60% win rate, Sharpe 6.15 (EUR/USD specific)
+        MACrossoverATR(fast_period=20, slow_period=50, atr_stop_multiplier=2.0, risk_reward_ratio=2.5),
     ]
 
     # Test all strategies
@@ -184,14 +184,17 @@ if __name__ == "__main__":
     # quick_test()
 
     # Option 2: Test all strategies on one pair (recommended to start)
-    # Now with 3 years of daily data!
-    run_all_strategies(symbol='EURUSD', timeframe='1day')
+    # Volume Divergence performs best on USD/JPY
+    run_all_strategies(symbol='USDJPY', timeframe='1day')
 
-    # Option 3: Test best strategy on multiple pairs
+    # Option 3: Test all strategies on EUR/USD (MA strategies work well here)
+    # run_all_strategies(symbol='EURUSD', timeframe='1day')
+
+    # Option 4: Test best strategy on multiple pairs
     # test_multiple_pairs()
 
-    # Option 4: Custom test
+    # Option 5: Custom test
     # fetcher = FMPDataFetcher()
-    # data = fetcher.get_historical_data('GBPUSD', timeframe='4hour')
-    # strategy = MACrossoverATR(fast_period=10, slow_period=30)
+    # data = fetcher.get_historical_data('GBPUSD', timeframe='1day')
+    # strategy = VolumeDivergence(lookback_period=48, stop_atr_multiplier=1.5, target_atr_multiplier=4.5)
     # test_single_strategy(data, strategy, initial_capital=10000, risk_per_trade=0.02)
