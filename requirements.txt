@@ -1,0 +1,35 @@
+# Core Data Science Libraries
+pandas>=2.0.0
+numpy>=1.24.0
+scipy>=1.10.0
+
+# Visualization
+matplotlib>=3.7.0
+seaborn>=0.12.0
+
+# Machine Learning - Traditional Models
+scikit-learn>=1.3.0
+
+# Machine Learning - Boosting
+xgboost>=2.0.0
+
+# Deep Learning - LSTM, GRU, ANN
+# tensorflow>=2.15.0  # Not compatible with Python 3.14 yet
+# Using Keras 3 standalone with PyTorch backend
+keras>=3.0.0
+torch>=2.0.0
+
+# Technical Indicators
+ta>=0.11.0
+# Alternative: TA-Lib (requires compilation on Windows)
+# TA-Lib>=0.4.28
+
+# Jupyter (already installed globally, but good for venv consistency)
+ipykernel>=6.25.0
+jupyter>=1.0.0
+notebook>=7.0.0
+
+# Additional utilities
+tqdm>=4.65.0  # Progress bars
+joblib>=1.3.0  # For model persistence
+openpyxl>=3.1.0  # For Excel file support if needed
