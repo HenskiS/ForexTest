@@ -12,8 +12,28 @@ Recreate the LSTM-based forex trading strategy from *"Predictive modeling of for
 - Compared statistics with study's Table 1
 - Confirmed non-normal distribution (JB test)
 
+### ✅ Step 2: Feature Engineering (Complete)
+Implemented all 26 indicators from Table 3 with default settings:
+
+**Statistical Indicators (4)**
+- Momentum, Average Price, Range, OHLC
+
+**Momentum Indicators (11)**
+- EMA: 10, 20, 50, 100, 200
+- MACD: line, signal, histogram (26, 12, 9)
+- ADX: adx, +DI, -DI (14)
+
+**Oscillator Indicators (5)**
+- RSI (14)
+- Stochastic: %K, %D (14, 3)
+- CCI (20, 0.015)
+- Williams %R (14)
+
+**Volatility Indicators (6)**
+- Bollinger Bands: upper, middle, lower, width, position (20, 2)
+- ATR (14)
+
 ### 🔄 Next Steps
-- Step 2: Feature Engineering (technical indicators: EMA, MACD, RSI, etc.)
 - Step 3: Target variable preparation
 - Step 4: Walk-forward optimization
 - Step 5: LSTM model training
