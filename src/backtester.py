@@ -78,6 +78,7 @@ class Backtester:
             BacktestResult with trades and metrics
         """
         self.reset()
+        self.strategy = strategy  # Store strategy reference for adaptive strategies
 
         # Generate signals from strategy
         signals = strategy.generate_signals(data.copy())
@@ -141,10 +142,27 @@ class Backtester:
         """Enter a new position"""
         price = row['close']
 
+        # For adaptive strategies, recalculate stop/target with current parameters
+        stop_loss = row.get('stop_loss')
+        take_profit = row.get('take_profit')
+
+        if hasattr(self.strategy, 'current_stop_mult') and 'atr' in row and pd.notna(row['atr']):
+            # Update volatility-based strategies
+            if hasattr(self.strategy, 'update_volatility'):
+                self.strategy.update_volatility(row['atr'])
+
+            # Recalculate with current adaptive parameters
+            atr = row['atr']
+            if direction == 'long':
+                stop_loss = price - atr * self.strategy.current_stop_mult
+                take_profit = price + atr * self.strategy.current_target_mult
+            else:  # short
+                stop_loss = price + atr * self.strategy.current_stop_mult
+                take_profit = price - atr * self.strategy.current_target_mult
+
         # Calculate position size based on risk
-        # For simplicity, using fixed risk per trade
-        if 'stop_loss' in row and pd.notna(row['stop_loss']):
-            stop_distance = abs(price - row['stop_loss'])
+        if stop_loss and pd.notna(stop_loss):
+            stop_distance = abs(price - stop_loss)
             if stop_distance > 0:
                 risk_amount = self.capital * self.risk_per_trade
                 size = risk_amount / stop_distance
@@ -159,8 +177,8 @@ class Backtester:
             entry_price=price,
             size=size,
             direction=direction,
-            stop_loss=row.get('stop_loss'),
-            take_profit=row.get('take_profit')
+            stop_loss=stop_loss,
+            take_profit=take_profit
         )
 
     def _check_exit(self, row):
@@ -195,10 +213,19 @@ class Backtester:
                 exit_reason = 'take_profit'
 
         # Check for signal-based exit
-        if not exit_signal and 'signal' in row and row['signal'] == 0:
-            exit_signal = True
-            exit_price = row['close']
-            exit_reason = 'signal'
+        # Only exit on signal=0 if we don't have stop/target defined
+        # (allows strategies to use signal-based exits OR stop/target exits)
+        if not exit_signal and 'signal' in row:
+            if row['signal'] == 0 and not self.position.stop_loss and not self.position.take_profit:
+                # No stop/target, use signal to exit
+                exit_signal = True
+                exit_price = row['close']
+                exit_reason = 'signal'
+            elif row['signal'] != 0 and abs(row['signal']) != abs(self.position.direction == 'long' and 1 or -1):
+                # Opposite signal (reversal)
+                exit_signal = True
+                exit_price = row['close']
+                exit_reason = 'signal'
 
         if exit_signal:
             self._close_position(row['date'], exit_price, exit_reason)
@@ -234,7 +261,17 @@ class Backtester:
             pnl_pct=pnl_pct,
             return_pct=pnl / self.capital * 100
         )
+        trade.exit_reason = reason  # Store exit reason
         self.trades.append(trade)
+
+        # Update strategy trade history (for adaptive strategies)
+        if hasattr(self.strategy, 'update_trade_history'):
+            outcome = 1 if pnl > 0 else 0
+            self.strategy.update_trade_history(
+                self.position.entry_time,
+                self.position.direction,
+                outcome
+            )
 
         # Clear position
         self.position = None

@@ -20,6 +20,9 @@ ENV/
 data/*.csv
 results/*.png
 results/*.csv
+results/
+ml*
+models
 
 # IDE
 .vscode/
