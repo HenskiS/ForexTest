@@ -44,4 +44,7 @@ Implemented all 26 indicators from Table 3 with default settings:
 ## Key Details
 - **Data**: EURUSD daily, 6,743 observations (2000-2025) — exceeds study's 6,171 obs
 - **Framework**: Keras 3.0 + PyTorch backend
-- **Notebook**: forex_lstm_study.ipynb
+- **Notebooks**:
+  - [forex_data_prep.ipynb](forex_data_prep.ipynb) — Steps 1-2: Data loading & feature engineering
+  - [forex_lstm_model.ipynb](forex_lstm_model.ipynb) — Steps 3-8: Model training & evaluation
+- **Output**: data/EURUSD_1day_with_features.csv
