@@ -38,7 +38,19 @@ print("="*70)
 print("\nLoading data with alternative targets...")
 df = pd.read_csv('data/EURUSD_1day_with_features_FIXED_multitarget.csv',
                  index_col='date', parse_dates=True)
-df_clean = df.dropna()
+
+# Drop rows where technical features are NaN
+# (Don't drop for macro features since we're not using them anymore)
+technical_features = [
+    'momentum', 'avg_price', 'range', 'ohlc',
+    'ema_10', 'ema_20', 'ema_50', 'ema_100', 'ema_200',
+    'macd', 'macd_signal', 'macd_hist',
+    'adx', 'plus_di', 'minus_di',
+    'rsi', 'stoch_k', 'stoch_d', 'cci', 'williams_r',
+    'bb_upper', 'bb_middle', 'bb_lower', 'bb_width', 'bb_position',
+    'atr'
+]
+df_clean = df.dropna(subset=technical_features + [TARGET_COLUMN])
 
 print(f"Data loaded: {df_clean.shape}")
 print(f"Date range: {df_clean.index.min()} to {df_clean.index.max()}")
@@ -51,6 +63,7 @@ ROLL_DAYS = 126
 WINDOW_SIZE = TRAIN_DAYS + VAL_DAYS + TEST_DAYS
 
 FEATURE_COLS = [
+    # Technical indicators only (reverted from failed macro experiment)
     'momentum', 'avg_price', 'range', 'ohlc',
     'ema_10', 'ema_20', 'ema_50', 'ema_100', 'ema_200',
     'macd', 'macd_signal', 'macd_hist',

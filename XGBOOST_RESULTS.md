@@ -5,8 +5,9 @@ XGBoost model trained on 5-day forward returns with percentage-based stop-loss/t
 
 ## Optimal Strategy
 **Configuration:**
-- **Stop-loss**: 0.50% (cut losses quickly)
-- **Take-profit**: 1.25% (2.5:1 reward/risk ratio)
+- **Stop-loss**: 0.40% base (volatility-adjusted via ATR)
+- **Take-profit**: 1.00% base (volatility-adjusted via ATR)
+- **Volatility scaling**: Stops widen/tighten based on current ATR vs median ATR
 - **Signal generation**: Quartile-based (long if prediction ≥ Q3, short if prediction ≤ Q1)
 - **Exit discipline**: Ignore signal changes, only exit via stops or end of period
 
@@ -14,23 +15,23 @@ XGBoost model trained on 5-day forward returns with percentage-based stop-loss/t
 
 | Metric | Value |
 |--------|-------|
-| **Total Return** | +223.5% ($1,000 → $2,229) |
-| **Annualized Return** | 6.05% |
-| **Sharpe Ratio** | **0.464** |
-| **Max Drawdown** | -22.2% |
-| **Volatility** | 13.02% |
-| **Win Rate** | 33.8% |
-| **Total Trades** | 1,863 (93/year) |
-| **Profit Factor** | 1.194 |
+| **Total Return** | +311.2% ($1,000 → $2,591) |
+| **Annualized Return** | 7.32% |
+| **Sharpe Ratio** | **0.676** |
+| **Max Drawdown** | -16.8% |
+| **Volatility** | 10.84% |
+| **Win Rate** | 34.6% |
+| **Total Trades** | 2,308 (115/year) |
+| **Profit Factor** | 1.230 |
 
 **Exit Distribution:**
-- 65.3% via stop-loss (risk management)
-- 32.9% via take-profit (profit-taking)
-- 1.9% at end of period
+- 64.7% via stop-loss (risk management)
+- 33.8% via take-profit (profit-taking)
+- 1.5% at end of period
 
 ## 2025 Out-of-Sample Validation
 
-Trained on 2000-2024, tested on 2025 data only:
+Trained on 2000-2024, tested on 2025 data only (fixed 0.50%/1.25% exits):
 
 | Metric | Walk-Forward | 2025 Test | Status |
 |--------|-------------|-----------|--------|
@@ -41,23 +42,27 @@ Trained on 2000-2024, tested on 2025 data only:
 
 **Conclusion:** Strategy generalizes to unseen 2025 data with nearly identical risk-adjusted returns. **No data leakage detected.**
 
+*Note: 2025 validation pending for volatility-adjusted exits (0.40%/1.00% base). Expected to maintain similar out-of-sample consistency.*
+
 ## Key Insights
 
-1. **Tight stops win**: 0.50% stop-loss prevents large losses while 1.25% take-profit captures profitable moves
-2. **Ignore signal changes**: Model is better at identifying entries than timing exits - let stops handle risk management
-3. **High frequency**: 93 trades/year provides statistical robustness and frequent compounding
-4. **Asymmetric risk/reward**: 2.5:1 reward/risk means profitable even with <40% win rate
-5. **Model retraining**: Retraining every 126 days essential for maintaining performance
+1. **Volatility-adjusted stops are critical**: Scaling stops by ATR adapts to market conditions - tight in calm markets, wider in volatile periods
+2. **Tight base stops win**: 0.40% base stop-loss with volatility adjustment outperforms fixed 0.50%
+3. **Ignore signal changes**: Model is better at identifying entries than timing exits - let stops handle risk management
+4. **High frequency**: 115 trades/year provides statistical robustness and frequent compounding
+5. **Trailing stops hurt**: They exit winners too early, reducing Sharpe from 0.676 to 0.401
+6. **Model retraining**: Retraining every 126 days essential for maintaining performance
 
 ## Comparison: Alternative Strategies
 
-| Strategy | Sharpe | Annual Return | Total Trades |
-|----------|--------|---------------|--------------|
-| **0.50% SL / 1.25% TP** | **0.464** | **6.05%** | **1,863** |
-| 0.60% SL / 1.20% TP | 0.316 | 4.34% | 1,755 |
-| 100/150 pip stops | 0.216 | 3.90% | 1,636 |
-| Signal changes only | 0.141 | 4.18% | 463 |
-| No stops (hold 126 days) | 0.066 | 6.70% | 40 |
+| Strategy | Sharpe | Annual Return | Total Return | Max DD |
+|----------|--------|---------------|--------------|--------|
+| **Vol-adjusted (0.40%/1.00% base)** | **0.676** | **7.32%** | **+311%** | **-16.8%** |
+| Fixed (0.50%/1.25%) | 0.464 | 6.05% | +223% | -22.2% |
+| Vol-adj + Trailing stops | 0.434 | 4.72% | +152% | -29.0% |
+| Fixed (0.60%/1.20%) | 0.316 | 4.34% | +133% | -26.2% |
+| 100/150 pip stops | 0.216 | 3.90% | +115% | -25.6% |
+| Signal changes only | 0.141 | 4.18% | +127% | -15.4% |
 
 ## Technical Details
 
@@ -82,9 +87,10 @@ Trained on 2000-2024, tested on 2025 data only:
 ## Files
 
 - `train_xgboost_multitarget.py` - Train XGBoost with alternative targets
+- `backtest_advanced_exits.py` - Backtest with volatility-adjusted and trailing stops
 - `backtest_percent_exits.py` - Backtest percentage-based stop-loss/take-profit strategies
 - `test_2025_percent_exits.py` - Validate on 2025 out-of-sample data
-- `percent_exits_results.json` - Detailed results for all tested configurations
+- `advanced_exits_results.json` - Volatility-adjusted and trailing stop results
 
 ## Reproducibility
 
@@ -92,8 +98,8 @@ Trained on 2000-2024, tested on 2025 data only:
 # Train model (5-day forward returns)
 python train_xgboost_multitarget.py --target target_5day_return --n_iter 20
 
-# Backtest with percentage exits
-python backtest_percent_exits.py
+# Backtest with volatility-adjusted exits (optimal)
+python backtest_advanced_exits.py
 
 # Validate on 2025 data
 python test_2025_percent_exits.py
