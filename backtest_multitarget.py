@@ -317,7 +317,8 @@ def calculate_performance_metrics(results, risk_free_rate=0.0):
     equity_curve = np.cumprod(1 + all_returns)
     total_return = equity_curve[-1] - 1
 
-    n_days = len(all_returns)
+    # Calculate actual number of calendar days (not trades!)
+    n_days = len(results) * TEST_DAYS  # 40 windows * 126 days each
     n_years = n_days / 252
     annualized_return = (1 + total_return) ** (1 / n_years) - 1
 

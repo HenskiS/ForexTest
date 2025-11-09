@@ -1,9 +1,9 @@
 {
   "buy_sell": {
     "total_return": 1.2683081769166789,
-    "annualized_return": 0.5617095152061777,
+    "annualized_return": 0.041801798696872616,
     "volatility": 0.2970943072117193,
-    "sharpe_ratio": 1.8906774770540615,
+    "sharpe_ratio": 0.1407021194353726,
     "max_drawdown": -0.15422728456229345,
     "win_rate": 0.5788336933045356,
     "avg_win": 0.012767164179104484,
@@ -15,9 +15,9 @@
   },
   "only_buy": {
     "total_return": -0.2656244740108553,
-    "annualized_return": -0.4309440550378951,
+    "annualized_return": -0.015318202545049564,
     "volatility": 0.6057139619662024,
-    "sharpe_ratio": -0.7114646220784009,
+    "sharpe_ratio": -0.025289498850786418,
     "max_drawdown": -0.3966971097153273,
     "win_rate": 0.5144927536231884,
     "avg_win": 0.018982394366197204,
@@ -29,9 +29,9 @@
   },
   "only_sell": {
     "total_return": -0.17388509305652133,
-    "annualized_return": -0.30750967959232844,
+    "annualized_return": -0.009505603527091955,
     "volatility": 0.4061823670587603,
-    "sharpe_ratio": -0.7570729419375376,
+    "sharpe_ratio": -0.02340230472318073,
     "max_drawdown": -0.353332565714101,
     "win_rate": 0.5572519083969466,
     "avg_win": 0.01429191780821918,
