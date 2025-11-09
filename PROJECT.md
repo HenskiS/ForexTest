@@ -33,10 +33,21 @@ Implemented all 26 indicators from Table 3 with default settings:
 - Bollinger Bands: upper, middle, lower, width, position (20, 2)
 - ATR (14)
 
+### ✅ Step 3: Target Variable Preparation (Complete)
+- Target variables (simple_return, log_return) already in CSV from Step 1
+
+### ✅ Step 4: Walk-Forward Optimization (Complete)
+- 40 windows, 6-month rolling (126 days)
+- Train: 600 days | Validation: 156 days | Test: 126 days
+- Sequence length: 20 days lookback
+
+### ✅ Step 5: LSTM Model Training (Ready to Run)
+- Hyperparameter search: 20 iterations per window using RandomizedSearchCV
+- Search space: layers [1-3], neurons [5-40], learning rate [0.001-0.05], batch [32/64/128], epochs [10/20/30]
+- Loss: MAE, Activation: tanh, Dropout: 0.2
+- **Note**: Full training (40 windows) will take several hours
+
 ### 🔄 Next Steps
-- Step 3: Target variable preparation
-- Step 4: Walk-forward optimization
-- Step 5: LSTM model training
 - Step 6: Signal generation
 - Step 7: Backtesting with transaction costs
 - Step 8: Performance evaluation

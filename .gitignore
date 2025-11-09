@@ -1,2 +1,32 @@
-venv
-.ipynb_checkpoints
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.env
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Model results and checkpoints
+*.pkl
+*_checkpoint.pkl
+
+# Generated summaries
+*_summary.json
+performance_summary.json
+strategy_comparison.csv
+
+# Temporary/intermediate scripts
+add_*.py
+fix_backtest*.py
+fix_signal*.py
+fix_save_signals.py
+fix_forex_backtest.py
+fix_dynamic_position_sizing.py
+implement_*.py
+update_*.py
+check_results.py
+
+# Keep only the important fix
+!fix_data_leakage.py
