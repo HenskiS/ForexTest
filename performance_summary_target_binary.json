@@ -1,0 +1,44 @@
+{
+  "buy_sell": {
+    "total_return": -0.17964419966223022,
+    "annualized_return": -0.03873903970593906,
+    "volatility": 0.19777787394584856,
+    "sharpe_ratio": -0.19587145383383878,
+    "max_drawdown": -0.5048720609456042,
+    "win_rate": 0.5455265241488519,
+    "avg_win": 0.007301465892597968,
+    "avg_loss": -0.008936376306620215,
+    "profit_factor": 0.9807446368832702,
+    "n_trades": 1263,
+    "n_winning": 689,
+    "n_losing": 574
+  },
+  "only_buy": {
+    "total_return": -0.29923100722326856,
+    "annualized_return": -0.1253568575729389,
+    "volatility": 0.2549409802745304,
+    "sharpe_ratio": -0.4917093259700726,
+    "max_drawdown": -0.4840564290190158,
+    "win_rate": 0.5291479820627802,
+    "avg_win": 0.00835090395480226,
+    "avg_loss": -0.010238761904761903,
+    "profit_factor": 0.9165976789108308,
+    "n_trades": 669,
+    "n_winning": 354,
+    "n_losing": 315
+  },
+  "only_sell": {
+    "total_return": -0.24742398014138078,
+    "annualized_return": -0.10168389931850508,
+    "volatility": 0.22543771485636255,
+    "sharpe_ratio": -0.4510509671520264,
+    "max_drawdown": -0.46513724328274686,
+    "win_rate": 0.5523952095808383,
+    "avg_win": 0.007663523035230354,
+    "avg_loss": -0.010177658862876254,
+    "profit_factor": 0.9292568153736956,
+    "n_trades": 668,
+    "n_winning": 369,
+    "n_losing": 299
+  }
+}
