@@ -1,8 +1,11 @@
 """
-Advanced exit strategies:
-1. Volatility-adjusted stop-loss and take-profit
-2. Trailing stops
-3. Combination of both
+Backtest with signal-change based exits.
+Exit when model prediction changes rather than fixed P/L stops.
+
+Exit rules:
+1. Exit long when signal changes to short or neutral
+2. Exit short when signal changes to long or neutral
+3. Optional: Add safety stop-loss to prevent catastrophic losses
 """
 
 import pandas as pd
@@ -10,7 +13,7 @@ import numpy as np
 import pickle
 import json
 
-print("ADVANCED EXIT STRATEGIES BACKTEST")
+print("BACKTESTING WITH SIGNAL CHANGE EXITS")
 print("="*80)
 
 # Load data and results
@@ -73,49 +76,35 @@ def generate_windows(df, window_size, roll_days, min_windows=40):
     return windows
 
 
-def generate_signals_regression(predictions):
-    """Generate signals from regression predictions."""
+def generate_signals_regression(predictions, lower_percentile=25, upper_percentile=75):
+    """Generate signals from regression predictions with configurable thresholds."""
     predictions = np.array(predictions)
     signals = np.zeros(len(predictions))
 
-    q1 = np.percentile(predictions, 25)
-    q3 = np.percentile(predictions, 75)
-    signals[predictions >= q3] = 1
-    signals[predictions <= q1] = -1
+    lower_threshold = np.percentile(predictions, lower_percentile)
+    upper_threshold = np.percentile(predictions, upper_percentile)
+    signals[predictions >= upper_threshold] = 1
+    signals[predictions <= lower_threshold] = -1
 
-    return signals, q1, q3
+    return signals, lower_threshold, upper_threshold
 
 
-def backtest_advanced_exits(actuals, signals, df_prices, test_indices,
-                           initial_capital,
-                           base_stop_loss_pct=0.0050,
-                           base_take_profit_pct=0.0125,
-                           use_vol_adjustment=False,
-                           vol_window=20,
-                           use_trailing_stop=False,
-                           trail_activate_pct=0.0075,
-                           trail_distance_pct=0.0025,
-                           loss_cooldown_days=0,
-                           transaction_cost_pct=0.0002):
+def backtest_signal_change_exits(actuals, signals, df_prices, test_indices,
+                                  initial_capital,
+                                  exit_on_neutral=True,
+                                  safety_stop_pct=None,
+                                  transaction_cost_pct=0.0002):
     """
-    Advanced backtest with volatility adjustment and/or trailing stops.
+    Backtest with signal-change based exits.
 
     Args:
-        base_stop_loss_pct: Base stop-loss percentage
-        base_take_profit_pct: Base take-profit percentage
-        use_vol_adjustment: If True, scale stops by volatility
-        vol_window: Window for volatility calculation
-        use_trailing_stop: If True, use trailing stop
-        trail_activate_pct: Profit level to activate trailing stop
-        trail_distance_pct: Distance to trail behind current price
-        loss_cooldown_days: Days to wait after a losing trade before re-entering
+        exit_on_neutral: If True, exit when signal becomes neutral (0)
+        safety_stop_pct: Optional safety stop-loss percentage (e.g., 0.05 = 5%)
     """
     capital = initial_capital
     position = 0
     entry_price = 0.0
     entry_capital = 0.0
-    trailing_stop_price = None
-    cooldown_remaining = 0
 
     equity_curve = [capital]
     returns = []
@@ -127,93 +116,55 @@ def backtest_advanced_exits(actuals, signals, df_prices, test_indices,
     lows = test_data['low'].values
     closes = test_data['close'].values
 
-    # Get ATR for volatility adjustment
-    if use_vol_adjustment:
-        atr = test_data['atr'].values
-        # Calculate median ATR for normalization
-        median_atr = np.median(atr[~np.isnan(atr)])
-
     for i in range(len(signals)):
         signal = signals[i]
         open_price = opens[i]
         high_price = highs[i]
         low_price = lows[i]
 
-        # Decrement cooldown timer
-        if cooldown_remaining > 0:
-            cooldown_remaining -= 1
-
-        # Adjust stops by volatility if enabled
-        if use_vol_adjustment and not np.isnan(atr[i]):
-            vol_ratio = atr[i] / median_atr
-            stop_loss_pct = base_stop_loss_pct * vol_ratio
-            take_profit_pct = base_take_profit_pct * vol_ratio
-        else:
-            stop_loss_pct = base_stop_loss_pct
-            take_profit_pct = base_take_profit_pct
-
-        # Check stops if we have a position
+        # Check exits if we have a position
         if position != 0:
-            # Calculate current P&L percentage
-            if position == 1:
-                pct_high = (high_price - entry_price) / entry_price
-                pct_low = (low_price - entry_price) / entry_price
-                current_price_for_trail = high_price
-            else:
-                pct_high = (entry_price - low_price) / entry_price
-                pct_low = (entry_price - high_price) / entry_price
-                current_price_for_trail = low_price
-
-            # Update trailing stop if enabled and activated
-            if use_trailing_stop and pct_high >= trail_activate_pct:
-                if trailing_stop_price is None:
-                    # Activate trailing stop at breakeven
-                    trailing_stop_price = entry_price
-                else:
-                    # Trail the stop
-                    if position == 1:
-                        new_stop = current_price_for_trail - (entry_price * trail_distance_pct)
-                        trailing_stop_price = max(trailing_stop_price, new_stop)
-                    else:
-                        new_stop = current_price_for_trail + (entry_price * trail_distance_pct)
-                        trailing_stop_price = min(trailing_stop_price, new_stop)
-
-            # Check exits
             exit_triggered = False
             exit_price = None
             exit_reason = None
 
-            # Check trailing stop first (if active)
-            if use_trailing_stop and trailing_stop_price is not None:
-                if position == 1 and low_price <= trailing_stop_price:
-                    exit_triggered = True
-                    exit_price = trailing_stop_price
-                    exit_reason = 'trailing_stop'
-                elif position == -1 and high_price >= trailing_stop_price:
-                    exit_triggered = True
-                    exit_price = trailing_stop_price
-                    exit_reason = 'trailing_stop'
-
-            # Check regular stop-loss
-            if not exit_triggered and pct_low <= -stop_loss_pct:
-                exit_triggered = True
-                exit_reason = 'stop_loss'
+            # Check safety stop-loss first (if enabled)
+            if safety_stop_pct is not None:
                 if position == 1:
-                    exit_price = entry_price * (1 - stop_loss_pct)
-                else:
-                    exit_price = entry_price * (1 + stop_loss_pct)
+                    pct_low = (low_price - entry_price) / entry_price
+                    if pct_low <= -safety_stop_pct:
+                        exit_triggered = True
+                        exit_reason = 'safety_stop'
+                        exit_price = entry_price * (1 - safety_stop_pct)
+                else:  # position == -1
+                    pct_high = (entry_price - high_price) / entry_price
+                    if pct_high <= -safety_stop_pct:
+                        exit_triggered = True
+                        exit_reason = 'safety_stop'
+                        exit_price = entry_price * (1 + safety_stop_pct)
 
-            # Check take-profit
-            elif not exit_triggered and pct_high >= take_profit_pct:
-                exit_triggered = True
-                exit_reason = 'take_profit'
-                if position == 1:
-                    exit_price = entry_price * (1 + take_profit_pct)
-                else:
-                    exit_price = entry_price * (1 - take_profit_pct)
+            # Check signal change exit
+            if not exit_triggered:
+                signal_changed = False
 
+                if position == 1:  # Long position
+                    if signal == -1:  # Signal flipped to short
+                        signal_changed = True
+                    elif signal == 0 and exit_on_neutral:  # Signal went neutral
+                        signal_changed = True
+                elif position == -1:  # Short position
+                    if signal == 1:  # Signal flipped to long
+                        signal_changed = True
+                    elif signal == 0 and exit_on_neutral:  # Signal went neutral
+                        signal_changed = True
+
+                if signal_changed:
+                    exit_triggered = True
+                    exit_reason = 'signal_change'
+                    exit_price = open_price
+
+            # Execute exit if triggered
             if exit_triggered:
-                # Calculate P&L
                 if position == 1:
                     pnl_pct = (exit_price - entry_price) / entry_price
                 else:
@@ -236,25 +187,19 @@ def backtest_advanced_exits(actuals, signals, df_prices, test_indices,
                     'exit_reason': exit_reason
                 })
 
-                # Set cooldown after losing trade
-                if pnl < 0 and loss_cooldown_days > 0:
-                    cooldown_remaining = loss_cooldown_days
-
                 position = 0
-                trailing_stop_price = None
 
-        # Enter new position (only if not in cooldown)
-        if position == 0 and signal != 0 and cooldown_remaining == 0:
+        # Enter new position (only when we don't have a position)
+        if position == 0 and signal != 0:
             cost = capital * transaction_cost_pct
             capital -= cost
             entry_price = open_price
             position = signal
             entry_capital = capital
-            trailing_stop_price = None
 
         equity_curve.append(capital)
 
-    # Close final position
+    # Close final position at end of period
     if position != 0:
         exit_price = closes[-1]
 
@@ -284,6 +229,7 @@ def backtest_advanced_exits(actuals, signals, df_prices, test_indices,
     winning_trades = [t for t in trades if t['pnl'] > 0]
     losing_trades = [t for t in trades if t['pnl'] <= 0]
 
+    # Count exit reasons
     exit_reasons = {}
     for t in trades:
         reason = t.get('exit_reason', 'unknown')
@@ -304,9 +250,9 @@ def backtest_advanced_exits(actuals, signals, df_prices, test_indices,
     }
 
 
-def backtest_all_windows_advanced(results, df_clean, windows, config,
-                                  initial_capital=1000.0, transaction_cost=0.0002):
-    """Backtest all windows with advanced exits."""
+def backtest_all_windows_signal_change(results, df_clean, windows, config,
+                                       initial_capital=1000.0, transaction_cost=0.0002):
+    """Backtest all windows with signal change exits."""
     capital = initial_capital
     all_backtests = []
 
@@ -316,22 +262,21 @@ def backtest_all_windows_advanced(results, df_clean, windows, config,
         test_end = window['test_end']
         test_indices = range(test_start, test_end)
 
-        signals, q1, q3 = generate_signals_regression(result['predictions'])
+        # Generate signals with configurable thresholds
+        signals, lower_thresh, upper_thresh = generate_signals_regression(
+            result['predictions'],
+            lower_percentile=config.get('lower_percentile', 25),
+            upper_percentile=config.get('upper_percentile', 75)
+        )
 
-        backtest = backtest_advanced_exits(
+        backtest = backtest_signal_change_exits(
             result['actuals'],
             signals,
             df_clean,
             test_indices,
             capital,
-            base_stop_loss_pct=config['base_stop_loss_pct'],
-            base_take_profit_pct=config['base_take_profit_pct'],
-            use_vol_adjustment=config.get('use_vol_adjustment', False),
-            vol_window=config.get('vol_window', 20),
-            use_trailing_stop=config.get('use_trailing_stop', False),
-            trail_activate_pct=config.get('trail_activate_pct', 0.0075),
-            trail_distance_pct=config.get('trail_distance_pct', 0.0025),
-            loss_cooldown_days=config.get('loss_cooldown_days', 0),
+            exit_on_neutral=config['exit_on_neutral'],
+            safety_stop_pct=config.get('safety_stop_pct'),
             transaction_cost_pct=transaction_cost
         )
         all_backtests.append(backtest)
@@ -376,6 +321,7 @@ def calculate_performance_metrics(backtests):
     total_losses = np.abs(np.sum(losing_trades))
     profit_factor = total_wins / total_losses if total_losses > 0 else np.inf
 
+    # Aggregate exit reasons
     all_exit_reasons = {}
     for bt in backtests:
         for reason, count in bt['exit_reasons'].items():
@@ -402,153 +348,137 @@ def calculate_performance_metrics(backtests):
 # Generate windows
 windows = generate_windows(df_clean, WINDOW_SIZE, ROLL_DAYS, min_windows=40)
 
-# Test configurations
+# Test configurations - testing different confidence thresholds
 test_configs = [
-    # Baseline
+    # Baseline (25/75 percentile - Q1/Q3)
     {
-        'name': 'Baseline (0.50% SL / 1.25% TP)',
-        'base_stop_loss_pct': 0.0050,
-        'base_take_profit_pct': 0.0125,
-        'use_vol_adjustment': False,
-        'use_trailing_stop': False
+        'name': 'Q1/Q3 (25/75%ile) - exit on neutral',
+        'lower_percentile': 25,
+        'upper_percentile': 75,
+        'exit_on_neutral': True,
+        'safety_stop_pct': None
+    },
+    {
+        'name': 'Q1/Q3 (25/75%ile) - no neutral exit',
+        'lower_percentile': 25,
+        'upper_percentile': 75,
+        'exit_on_neutral': False,
+        'safety_stop_pct': None
     },
 
-    # Volatility-adjusted only
+    # Higher confidence (20/80)
     {
-        'name': 'Vol-adjusted (base 0.50% / 1.25%)',
-        'base_stop_loss_pct': 0.0050,
-        'base_take_profit_pct': 0.0125,
-        'use_vol_adjustment': True,
-        'vol_window': 20,
-        'use_trailing_stop': False
+        'name': '20/80%ile - exit on neutral',
+        'lower_percentile': 20,
+        'upper_percentile': 80,
+        'exit_on_neutral': True,
+        'safety_stop_pct': None
     },
     {
-        'name': 'Vol-adjusted (base 0.40% / 1.00%)',
-        'base_stop_loss_pct': 0.0040,
-        'base_take_profit_pct': 0.0100,
-        'use_vol_adjustment': True,
-        'vol_window': 20,
-        'use_trailing_stop': False
-    },
-    {
-        'name': 'Vol-adjusted (base 0.60% / 1.50%)',
-        'base_stop_loss_pct': 0.0060,
-        'base_take_profit_pct': 0.0150,
-        'use_vol_adjustment': True,
-        'vol_window': 20,
-        'use_trailing_stop': False
+        'name': '20/80%ile - no neutral exit',
+        'lower_percentile': 20,
+        'upper_percentile': 80,
+        'exit_on_neutral': False,
+        'safety_stop_pct': None
     },
 
-    # Vol-adjusted + Loss Cooldown
+    # Higher confidence (15/85)
     {
-        'name': 'Vol-adj (0.40%/1.00%) + 1 day cooldown',
-        'base_stop_loss_pct': 0.0040,
-        'base_take_profit_pct': 0.0100,
-        'use_vol_adjustment': True,
-        'vol_window': 20,
-        'use_trailing_stop': False,
-        'loss_cooldown_days': 1
+        'name': '15/85%ile - exit on neutral',
+        'lower_percentile': 15,
+        'upper_percentile': 85,
+        'exit_on_neutral': True,
+        'safety_stop_pct': None
     },
     {
-        'name': 'Vol-adj (0.40%/1.00%) + 2 day cooldown',
-        'base_stop_loss_pct': 0.0040,
-        'base_take_profit_pct': 0.0100,
-        'use_vol_adjustment': True,
-        'vol_window': 20,
-        'use_trailing_stop': False,
-        'loss_cooldown_days': 2
-    },
-    {
-        'name': 'Vol-adj (0.40%/1.00%) + 3 day cooldown',
-        'base_stop_loss_pct': 0.0040,
-        'base_take_profit_pct': 0.0100,
-        'use_vol_adjustment': True,
-        'vol_window': 20,
-        'use_trailing_stop': False,
-        'loss_cooldown_days': 3
-    },
-    {
-        'name': 'Vol-adj (0.40%/1.00%) + 5 day cooldown',
-        'base_stop_loss_pct': 0.0040,
-        'base_take_profit_pct': 0.0100,
-        'use_vol_adjustment': True,
-        'vol_window': 20,
-        'use_trailing_stop': False,
-        'loss_cooldown_days': 5
-    },
-    {
-        'name': 'Vol-adj (0.40%/1.00%) + 7 day cooldown',
-        'base_stop_loss_pct': 0.0040,
-        'base_take_profit_pct': 0.0100,
-        'use_vol_adjustment': True,
-        'vol_window': 20,
-        'use_trailing_stop': False,
-        'loss_cooldown_days': 7
-    },
-    {
-        'name': 'Vol-adj (0.40%/1.00%) + 10 day cooldown',
-        'base_stop_loss_pct': 0.0040,
-        'base_take_profit_pct': 0.0100,
-        'use_vol_adjustment': True,
-        'vol_window': 20,
-        'use_trailing_stop': False,
-        'loss_cooldown_days': 10
+        'name': '15/85%ile - no neutral exit',
+        'lower_percentile': 15,
+        'upper_percentile': 85,
+        'exit_on_neutral': False,
+        'safety_stop_pct': None
     },
 
-    # Trailing stop only
+    # High confidence (10/90)
     {
-        'name': 'Trailing (activate 0.75%, trail 0.25%)',
-        'base_stop_loss_pct': 0.0050,
-        'base_take_profit_pct': 0.0125,
-        'use_vol_adjustment': False,
-        'use_trailing_stop': True,
-        'trail_activate_pct': 0.0075,
-        'trail_distance_pct': 0.0025
+        'name': '10/90%ile - exit on neutral',
+        'lower_percentile': 10,
+        'upper_percentile': 90,
+        'exit_on_neutral': True,
+        'safety_stop_pct': None
     },
     {
-        'name': 'Trailing (activate 0.50%, trail 0.20%)',
-        'base_stop_loss_pct': 0.0050,
-        'base_take_profit_pct': 0.0125,
-        'use_vol_adjustment': False,
-        'use_trailing_stop': True,
-        'trail_activate_pct': 0.0050,
-        'trail_distance_pct': 0.0020
-    },
-    {
-        'name': 'Trailing (activate 1.00%, trail 0.30%)',
-        'base_stop_loss_pct': 0.0050,
-        'base_take_profit_pct': 0.0125,
-        'use_vol_adjustment': False,
-        'use_trailing_stop': True,
-        'trail_activate_pct': 0.0100,
-        'trail_distance_pct': 0.0030
+        'name': '10/90%ile - no neutral exit',
+        'lower_percentile': 10,
+        'upper_percentile': 90,
+        'exit_on_neutral': False,
+        'safety_stop_pct': None
     },
 
-    # Combined: Vol-adjusted + Trailing
+    # Very high confidence (5/95)
     {
-        'name': 'Vol-adj + Trailing (0.75%/0.25%)',
-        'base_stop_loss_pct': 0.0050,
-        'base_take_profit_pct': 0.0125,
-        'use_vol_adjustment': True,
-        'vol_window': 20,
-        'use_trailing_stop': True,
-        'trail_activate_pct': 0.0075,
-        'trail_distance_pct': 0.0025
+        'name': '5/95%ile - exit on neutral',
+        'lower_percentile': 5,
+        'upper_percentile': 95,
+        'exit_on_neutral': True,
+        'safety_stop_pct': None
     },
     {
-        'name': 'Vol-adj + Trailing (0.50%/0.20%)',
-        'base_stop_loss_pct': 0.0050,
-        'base_take_profit_pct': 0.0125,
-        'use_vol_adjustment': True,
-        'vol_window': 20,
-        'use_trailing_stop': True,
-        'trail_activate_pct': 0.0050,
-        'trail_distance_pct': 0.0020
+        'name': '5/95%ile - no neutral exit',
+        'lower_percentile': 5,
+        'upper_percentile': 95,
+        'exit_on_neutral': False,
+        'safety_stop_pct': None
+    },
+
+    # Extreme confidence (2/98)
+    {
+        'name': '2/98%ile - exit on neutral',
+        'lower_percentile': 2,
+        'upper_percentile': 98,
+        'exit_on_neutral': True,
+        'safety_stop_pct': None
+    },
+    {
+        'name': '2/98%ile - no neutral exit',
+        'lower_percentile': 2,
+        'upper_percentile': 98,
+        'exit_on_neutral': False,
+        'safety_stop_pct': None
+    },
+
+    # Best thresholds with safety stops
+    {
+        'name': '10/90%ile + 3% safety',
+        'lower_percentile': 10,
+        'upper_percentile': 90,
+        'exit_on_neutral': True,
+        'safety_stop_pct': 0.03
+    },
+    {
+        'name': '5/95%ile + 3% safety',
+        'lower_percentile': 5,
+        'upper_percentile': 95,
+        'exit_on_neutral': True,
+        'safety_stop_pct': 0.03
+    },
+    {
+        'name': '10/90%ile + 5% safety',
+        'lower_percentile': 10,
+        'upper_percentile': 90,
+        'exit_on_neutral': True,
+        'safety_stop_pct': 0.05
+    },
+    {
+        'name': '5/95%ile + 5% safety',
+        'lower_percentile': 5,
+        'upper_percentile': 95,
+        'exit_on_neutral': True,
+        'safety_stop_pct': 0.05
     },
 ]
 
 print("\n" + "="*80)
-print("TESTING ADVANCED EXIT STRATEGIES")
+print("TESTING SIGNAL CHANGE EXIT STRATEGIES")
 print("="*80)
 
 results_summary = []
@@ -556,9 +486,15 @@ results_summary = []
 for config in test_configs:
     print(f"\n{'='*80}")
     print(f"Testing: {config['name']}")
+    print(f"  Thresholds: {config.get('lower_percentile', 25)}/{config.get('upper_percentile', 75)} percentile")
+    print(f"  Exit on neutral: {config['exit_on_neutral']}")
+    if config.get('safety_stop_pct'):
+        print(f"  Safety stop: {config['safety_stop_pct']*100:.2f}%")
+    else:
+        print(f"  Safety stop: None")
     print(f"{'='*80}")
 
-    backtests = backtest_all_windows_advanced(
+    backtests = backtest_all_windows_signal_change(
         all_results,
         df_clean,
         windows,
@@ -578,6 +514,8 @@ for config in test_configs:
         print(f"  Sharpe Ratio:        {metrics['sharpe_ratio']:8.3f}")
         print(f"  Max Drawdown:        {metrics['max_drawdown']*100:8.2f}%")
         print(f"  Win Rate:            {metrics['win_rate']*100:8.2f}%")
+        print(f"  Average Win:         {metrics['avg_win']*100:8.4f}%")
+        print(f"  Average Loss:        {metrics['avg_loss']*100:8.4f}%")
         print(f"  Profit Factor:       {metrics['profit_factor']:8.3f}")
         print(f"  Total Trades:        {metrics['n_trades']:8d}")
 
@@ -597,10 +535,11 @@ print("\n" + "="*80)
 print("COMPARISON TABLE (Sorted by Sharpe Ratio)")
 print("="*80)
 
+# Sort by Sharpe ratio
 results_summary_sorted = sorted(results_summary, key=lambda x: x['sharpe_ratio'], reverse=True)
 
-print(f"\n{'Config':<45} {'Return':>8} {'Annual':>8} {'Sharpe':>8} {'Max DD':>8} {'Trades':>7}")
-print("-" * 110)
+print(f"\n{'Config':<45} {'Return':>8} {'Annual':>8} {'Sharpe':>8} {'Max DD':>8} {'Win%':>6} {'Trades':>7}")
+print("-" * 115)
 
 for r in results_summary_sorted:
     print(f"{r['config']:<45} "
@@ -608,11 +547,13 @@ for r in results_summary_sorted:
           f"{r['annualized_return']*100:7.2f}% "
           f"{r['sharpe_ratio']:7.3f} "
           f"{r['max_drawdown']*100:7.1f}% "
+          f"{r['win_rate']*100:5.1f}% "
           f"{r['n_trades']:6d}")
 
 # Save results
-output_file = 'advanced_exits_results.json'
+output_file = 'signal_change_exits_results.json'
 with open(output_file, 'w') as f:
+    # Convert numpy types to Python types for JSON serialization
     results_json = []
     for r in results_summary:
         r_copy = {k: (int(v) if isinstance(v, (np.integer, np.int64)) else
@@ -630,8 +571,30 @@ print(f"{'='*80}")
 best_sharpe = results_summary_sorted[0]
 print(f"\nBEST CONFIGURATION (by Sharpe Ratio):")
 print(f"  {best_sharpe['config']}")
+print(f"  Thresholds: {best_sharpe.get('lower_percentile', 25)}/{best_sharpe.get('upper_percentile', 75)} percentile")
+print(f"  Exit on neutral: {best_sharpe['exit_on_neutral']}")
+if best_sharpe.get('safety_stop_pct'):
+    print(f"  Safety stop: {best_sharpe['safety_stop_pct']*100:.2f}%")
+else:
+    print(f"  Safety stop: None")
 print(f"  Sharpe Ratio: {best_sharpe['sharpe_ratio']:.3f}")
 print(f"  Annualized Return: {best_sharpe['annualized_return']*100:.2f}%")
 print(f"  Total Return: {best_sharpe['total_return']*100:.2f}%")
 print(f"  Max Drawdown: {best_sharpe['max_drawdown']*100:.2f}%")
+print(f"  Total Trades: {best_sharpe['n_trades']}")
+
+# Compare with optimal fixed stop strategy
+print(f"\n{'='*80}")
+print("COMPARISON WITH OPTIMAL FIXED STOP STRATEGY")
+print(f"{'='*80}")
+print(f"\nFixed stops (0.40%/1.00% vol-adjusted):")
+print(f"  Sharpe Ratio: 0.676")
+print(f"  Annualized Return: 7.32%")
+print(f"  Total Return: +311%")
+print(f"  Max Drawdown: -16.8%")
+print(f"\nBest signal change strategy ({best_sharpe['config']}):")
+print(f"  Sharpe Ratio: {best_sharpe['sharpe_ratio']:.3f}")
+print(f"  Annualized Return: {best_sharpe['annualized_return']*100:.2f}%")
+print(f"  Total Return: {best_sharpe['total_return']*100:.1f}%")
+print(f"  Max Drawdown: {best_sharpe['max_drawdown']*100:.1f}%")
 print(f"{'='*80}")
