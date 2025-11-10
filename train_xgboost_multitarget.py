@@ -22,21 +22,25 @@ parser.add_argument('--target', type=str, required=True,
                     help='Target column name (e.g., target_binary, target_5day_return)')
 parser.add_argument('--n_iter', type=int, default=20,
                     help='Number of hyperparameter iterations per window')
+parser.add_argument('--pair', type=str, default='EURUSD',
+                    help='Currency pair (e.g., EURUSD, GBPUSD, AUDUSD, USDJPY)')
 args = parser.parse_args()
 
 TARGET_COLUMN = args.target
 N_ITER = args.n_iter
+CURRENCY_PAIR = args.pair.upper()
 
 # Determine if classification or regression
 IS_BINARY = 'binary' in TARGET_COLUMN.lower()
 
 print(f"Training XGBoost with target: {TARGET_COLUMN}")
+print(f"Currency Pair: {CURRENCY_PAIR}")
 print(f"Task type: {'CLASSIFICATION' if IS_BINARY else 'REGRESSION'}")
 print("="*70)
 
 # Load data
 print("\nLoading data with alternative targets...")
-df = pd.read_csv('data/EURUSD_1day_with_features_FIXED_multitarget.csv',
+df = pd.read_csv(f'data/{CURRENCY_PAIR}_1day_with_features_FIXED_multitarget.csv',
                  index_col='date', parse_dates=True)
 
 # Drop rows where technical features are NaN
@@ -100,7 +104,7 @@ print(f"  gamma: {param_grid['gamma']}")
 print(f"  Total combinations: {len(list(ParameterGrid(param_grid)))}")
 
 
-def generate_windows(df, window_size, roll_days, min_windows=40):
+def generate_windows(df, window_size, roll_days):
     """Generate rolling walk-forward windows."""
     windows = []
     start_idx = 0
@@ -124,9 +128,6 @@ def generate_windows(df, window_size, roll_days, min_windows=40):
 
         windows.append(window)
         start_idx += roll_days
-
-        if len(windows) >= min_windows:
-            break
 
     return windows
 
@@ -252,12 +253,12 @@ def randomized_search_xgboost(X_train, y_train, X_val, y_val, n_iter, is_binary)
 
 # Generate windows
 print("\nGenerating windows...")
-windows = generate_windows(df_clean, WINDOW_SIZE, ROLL_DAYS, min_windows=40)
+windows = generate_windows(df_clean, WINDOW_SIZE, ROLL_DAYS)
 print(f"Generated {len(windows)} windows")
 
 # Load existing results if they exist
 import os
-results_file = f'xgboost_results_{TARGET_COLUMN}_checkpoint.pkl'
+results_file = f'xgboost_results_{CURRENCY_PAIR}_{TARGET_COLUMN}_checkpoint.pkl'
 if os.path.exists(results_file):
     with open(results_file, 'rb') as f:
         all_results = pickle.load(f)
@@ -344,7 +345,7 @@ print(f"ALL WINDOWS COMPLETE")
 print(f"{'='*70}")
 
 # Save final results
-final_file = f'xgboost_results_{TARGET_COLUMN}.pkl'
+final_file = f'xgboost_results_{CURRENCY_PAIR}_{TARGET_COLUMN}.pkl'
 with open(final_file, 'wb') as f:
     pickle.dump(all_results, f)
 
@@ -355,7 +356,7 @@ for r in all_results:
     summary = {k: v for k, v in r.items() if k not in ['predictions', 'actuals']}
     results_summary.append(summary)
 
-summary_file = f'xgboost_results_{TARGET_COLUMN}_summary.json'
+summary_file = f'xgboost_results_{CURRENCY_PAIR}_{TARGET_COLUMN}_summary.json'
 with open(summary_file, 'w') as f:
     json.dump(results_summary, f, indent=2)
 

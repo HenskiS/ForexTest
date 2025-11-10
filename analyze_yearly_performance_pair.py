@@ -1,17 +1,27 @@
 """
-Analyze yearly performance of the optimal strategy (1-day cooldown).
+Analyze yearly performance of optimal strategy for any currency pair.
+
+Usage:
+    python analyze_yearly_performance_pair.py GBPUSD
+    python analyze_yearly_performance_pair.py AUDUSD
 """
 
+import sys
 import pandas as pd
 import numpy as np
 import pickle
-from datetime import datetime
 
-print("YEARLY PERFORMANCE ANALYSIS")
+if len(sys.argv) < 2:
+    print("Usage: python analyze_yearly_performance_pair.py <CURRENCY_PAIR>")
+    sys.exit(1)
+
+CURRENCY_PAIR = sys.argv[1].upper()
+
+print(f"YEARLY PERFORMANCE ANALYSIS - {CURRENCY_PAIR}")
 print("="*80)
 
-# Load data and results
-df = pd.read_csv('data/EURUSD_1day_with_features_FIXED_multitarget.csv',
+# Load data
+df = pd.read_csv(f'data/{CURRENCY_PAIR}_1day_with_features_FIXED_multitarget.csv',
                  index_col='date', parse_dates=True)
 
 technical_features = [
@@ -25,7 +35,7 @@ technical_features = [
 ]
 df_clean = df.dropna(subset=technical_features)
 
-with open('xgboost_results_target_5day_return.pkl', 'rb') as f:
+with open(f'xgboost_results_{CURRENCY_PAIR}_target_5day_return.pkl', 'rb') as f:
     all_results = pickle.load(f)
 
 # Configuration
@@ -37,7 +47,6 @@ WINDOW_SIZE = TRAIN_DAYS + VAL_DAYS + TEST_DAYS
 
 
 def generate_windows(df, window_size, roll_days):
-    """Generate rolling walk-forward windows."""
     windows = []
     start_idx = 0
 
@@ -65,7 +74,6 @@ def generate_windows(df, window_size, roll_days):
 
 
 def generate_signals_regression(predictions):
-    """Generate signals from regression predictions."""
     predictions = np.array(predictions)
     signals = np.zeros(len(predictions))
 
@@ -83,7 +91,6 @@ def backtest_window_with_cooldown(actuals, signals, df_prices, test_indices,
                                    base_take_profit_pct=0.0100,
                                    loss_cooldown_days=1,
                                    transaction_cost_pct=0.0002):
-    """Backtest with volatility-adjusted stops and loss cooldown."""
     capital = initial_capital
     position = 0
     entry_price = 0.0
@@ -102,7 +109,6 @@ def backtest_window_with_cooldown(actuals, signals, df_prices, test_indices,
     atr = test_data['atr'].values
     dates = test_data.index
 
-    # Calculate median ATR for normalization
     median_atr = np.median(atr[~np.isnan(atr)])
 
     for i in range(len(signals)):
@@ -112,11 +118,9 @@ def backtest_window_with_cooldown(actuals, signals, df_prices, test_indices,
         low_price = lows[i]
         date = dates[i]
 
-        # Decrement cooldown timer
         if cooldown_remaining > 0:
             cooldown_remaining -= 1
 
-        # Adjust stops by volatility
         if not np.isnan(atr[i]):
             vol_ratio = atr[i] / median_atr
             stop_loss_pct = base_stop_loss_pct * vol_ratio
@@ -125,9 +129,7 @@ def backtest_window_with_cooldown(actuals, signals, df_prices, test_indices,
             stop_loss_pct = base_stop_loss_pct
             take_profit_pct = base_take_profit_pct
 
-        # Check stops if we have a position
         if position != 0:
-            # Calculate current P&L percentage
             if position == 1:
                 pct_high = (high_price - entry_price) / entry_price
                 pct_low = (low_price - entry_price) / entry_price
@@ -135,12 +137,10 @@ def backtest_window_with_cooldown(actuals, signals, df_prices, test_indices,
                 pct_high = (entry_price - low_price) / entry_price
                 pct_low = (entry_price - high_price) / entry_price
 
-            # Check exits
             exit_triggered = False
             exit_price = None
             exit_reason = None
 
-            # Check stop-loss
             if pct_low <= -stop_loss_pct:
                 exit_triggered = True
                 exit_reason = 'stop_loss'
@@ -149,7 +149,6 @@ def backtest_window_with_cooldown(actuals, signals, df_prices, test_indices,
                 else:
                     exit_price = entry_price * (1 + stop_loss_pct)
 
-            # Check take-profit
             elif pct_high >= take_profit_pct:
                 exit_triggered = True
                 exit_reason = 'take_profit'
@@ -159,7 +158,6 @@ def backtest_window_with_cooldown(actuals, signals, df_prices, test_indices,
                     exit_price = entry_price * (1 - take_profit_pct)
 
             if exit_triggered:
-                # Calculate P&L
                 if position == 1:
                     pnl_pct = (exit_price - entry_price) / entry_price
                 else:
@@ -183,13 +181,11 @@ def backtest_window_with_cooldown(actuals, signals, df_prices, test_indices,
                     'exit_reason': exit_reason
                 })
 
-                # Set cooldown after losing trade
                 if pnl < 0 and loss_cooldown_days > 0:
                     cooldown_remaining = loss_cooldown_days
 
                 position = 0
 
-        # Enter new position (only if not in cooldown)
         if position == 0 and signal != 0 and cooldown_remaining == 0:
             cost = capital * transaction_cost_pct
             capital -= cost
@@ -310,15 +306,13 @@ print(f"Average Loss: {losing_trades['pnl_pct'].mean()*100:.3f}%")
 print(f"Best Trade: {trades_df['pnl_pct'].max()*100:.2f}%")
 print(f"Worst Trade: {trades_df['pnl_pct'].min()*100:.2f}%")
 
-# Verify capital calculation by compounding all returns
+# Verify capital calculation
 compounded_capital = 1000.0
 for ret in trades_df['return']:
     compounded_capital *= (1 + ret)
 
-print(f"\nFinal Capital (from backtest loop): ${capital:.2f}")
-print(f"Final Capital (from yearly compounding): ${yearly_capital:.2f}")
+print(f"\nFinal Capital (from yearly compounding): ${yearly_capital:.2f}")
 print(f"Final Capital (from all returns compounded): ${compounded_capital:.2f}")
-print(f"Total Return (from backtest): {(capital - 1000)/1000*100:.2f}%")
 print(f"Total Return (from yearly): {(yearly_capital - 1000)/1000*100:.2f}%")
 
 # Calculate drawdown by year
@@ -328,7 +322,6 @@ print("="*80)
 print(f"{'Year':<6} {'Max DD':<10} {'Recovery Days':<15}")
 print("-"*40)
 
-yearly_equity = {}
 current_capital = 1000.0
 
 for year in sorted(trades_df['year'].unique()):
@@ -347,7 +340,7 @@ for year in sorted(trades_df['year'].unique()):
     # Find recovery days (rough estimate)
     dd_idx = np.argmin(drawdown)
     recovery_idx = np.where(equity[dd_idx:] >= running_max[dd_idx])[0]
-    recovery_days = recovery_idx[0] * 3 if len(recovery_idx) > 0 else -1  # Rough estimate
+    recovery_days = recovery_idx[0] * 3 if len(recovery_idx) > 0 else -1
 
     print(f"{year:<6} {max_dd*100:8.2f}% {recovery_days if recovery_days >= 0 else 'Not recovered':>14}")
 

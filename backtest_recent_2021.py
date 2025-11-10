@@ -1,18 +1,21 @@
 """
-Analyze yearly performance of the optimal strategy (1-day cooldown).
+Backtest the optimal strategy (1-day cooldown) on recent data (2021-present).
 """
 
 import pandas as pd
 import numpy as np
 import pickle
-from datetime import datetime
+import json
 
-print("YEARLY PERFORMANCE ANALYSIS")
+print("BACKTEST - RECENT DATA (2021+) WITH 1-DAY COOLDOWN")
 print("="*80)
 
-# Load data and results
+# Load data
 df = pd.read_csv('data/EURUSD_1day_with_features_FIXED_multitarget.csv',
                  index_col='date', parse_dates=True)
+
+# Filter to 2021+
+df = df[df.index >= '2021-01-01']
 
 technical_features = [
     'momentum', 'avg_price', 'range', 'ohlc',
@@ -25,8 +28,11 @@ technical_features = [
 ]
 df_clean = df.dropna(subset=technical_features)
 
-with open('xgboost_results_target_5day_return.pkl', 'rb') as f:
+# Load model results
+with open('xgboost_results_recent_2021.pkl', 'rb') as f:
     all_results = pickle.load(f)
+
+print(f"\nLoaded {len(all_results)} windows from 2021-present")
 
 # Configuration
 TRAIN_DAYS = 600
@@ -231,6 +237,7 @@ def backtest_window_with_cooldown(actuals, signals, df_prices, test_indices,
     return {
         'trades': trades,
         'returns': returns,
+        'equity_curve': equity_curve,
         'final_capital': capital,
         'final_return': final_return
     }
@@ -240,8 +247,14 @@ def backtest_window_with_cooldown(actuals, signals, df_prices, test_indices,
 windows = generate_windows(df_clean, WINDOW_SIZE, ROLL_DAYS)
 
 # Run backtest with 1-day cooldown
+print("\nRunning backtest with optimal strategy:")
+print("  Vol-adjusted stops: 0.40%/1.00% base")
+print("  Loss cooldown: 1 day")
+print("="*80)
+
 capital = 1000.0
 all_trades = []
+all_equity = [capital]
 
 for window_idx, result in enumerate(all_results):
     window = windows[window_idx]
@@ -265,90 +278,82 @@ for window_idx, result in enumerate(all_results):
 
     all_trades.extend(backtest['trades'])
     capital = backtest['final_capital']
+    all_equity.extend(backtest['equity_curve'][1:])
 
-# Convert trades to DataFrame
-trades_df = pd.DataFrame(all_trades)
-trades_df['year'] = pd.to_datetime(trades_df['date']).dt.year
+    print(f"\nWindow {window_idx}: {window['date_start'].date()} to {window['date_end'].date()}")
+    print(f"  Trades: {len(backtest['trades'])}")
+    print(f"  Return: {backtest['final_return']*100:.2f}%")
+    print(f"  Final capital: ${capital:.2f}")
 
-# Calculate yearly statistics
-print("\nYEARLY PERFORMANCE BREAKDOWN")
-print("="*80)
-print(f"{'Year':<6} {'Trades':<8} {'Win%':<8} {'Return':<12} {'Capital':<12} {'Best Trade':<12} {'Worst Trade':<12}")
-print("-"*90)
-
-yearly_capital = 1000.0
-for year in sorted(trades_df['year'].unique()):
-    year_trades = trades_df[trades_df['year'] == year]
-
-    n_trades = len(year_trades)
-    winning_trades = year_trades[year_trades['pnl'] > 0]
-    win_rate = len(winning_trades) / n_trades if n_trades > 0 else 0
-
-    year_return = (1 + year_trades['return']).prod() - 1
-    yearly_capital = yearly_capital * (1 + year_return)
-
-    best_trade = year_trades['pnl_pct'].max() if n_trades > 0 else 0
-    worst_trade = year_trades['pnl_pct'].min() if n_trades > 0 else 0
-
-    print(f"{year:<6} {n_trades:<8} {win_rate*100:6.1f}% {year_return*100:10.2f}% ${yearly_capital:10.2f} {best_trade*100:10.2f}% {worst_trade*100:11.2f}%")
-
-# Overall statistics
+# Calculate overall statistics
 print("\n" + "="*80)
-print("OVERALL STATISTICS")
+print("OVERALL RESULTS")
 print("="*80)
 
+trades_df = pd.DataFrame(all_trades)
 total_trades = len(trades_df)
 winning_trades = trades_df[trades_df['pnl'] > 0]
 losing_trades = trades_df[trades_df['pnl'] <= 0]
 
-print(f"Total Trades: {total_trades}")
+print(f"\nTotal Trades: {total_trades}")
 print(f"Winning Trades: {len(winning_trades)} ({len(winning_trades)/total_trades*100:.1f}%)")
 print(f"Losing Trades: {len(losing_trades)} ({len(losing_trades)/total_trades*100:.1f}%)")
-print(f"Win Rate: {len(winning_trades)/total_trades*100:.1f}%")
-print(f"Average Win: {winning_trades['pnl_pct'].mean()*100:.3f}%")
+
+print(f"\nAverage Win: {winning_trades['pnl_pct'].mean()*100:.3f}%")
 print(f"Average Loss: {losing_trades['pnl_pct'].mean()*100:.3f}%")
 print(f"Best Trade: {trades_df['pnl_pct'].max()*100:.2f}%")
 print(f"Worst Trade: {trades_df['pnl_pct'].min()*100:.2f}%")
 
-# Verify capital calculation by compounding all returns
-compounded_capital = 1000.0
-for ret in trades_df['return']:
-    compounded_capital *= (1 + ret)
+# Exit reasons
+exit_reasons = trades_df['exit_reason'].value_counts()
+print(f"\nExit Reasons:")
+for reason, count in exit_reasons.items():
+    print(f"  {reason}: {count} ({count/total_trades*100:.1f}%)")
 
-print(f"\nFinal Capital (from backtest loop): ${capital:.2f}")
-print(f"Final Capital (from yearly compounding): ${yearly_capital:.2f}")
-print(f"Final Capital (from all returns compounded): ${compounded_capital:.2f}")
-print(f"Total Return (from backtest): {(capital - 1000)/1000*100:.2f}%")
-print(f"Total Return (from yearly): {(yearly_capital - 1000)/1000*100:.2f}%")
+# Calculate metrics
+total_return = (capital - 1000) / 1000
+years = (windows[-1]['date_end'] - windows[0]['date_start']).days / 365.25
+annual_return = (1 + total_return) ** (1 / years) - 1
 
-# Calculate drawdown by year
-print("\n" + "="*80)
-print("DRAWDOWN BY YEAR")
-print("="*80)
-print(f"{'Year':<6} {'Max DD':<10} {'Recovery Days':<15}")
-print("-"*40)
+returns_arr = np.array(trades_df['return'].values)
+sharpe = (np.mean(returns_arr) / np.std(returns_arr)) * np.sqrt(total_trades / years)
 
-yearly_equity = {}
-current_capital = 1000.0
+# Max drawdown
+equity_arr = np.array(all_equity)
+running_max = np.maximum.accumulate(equity_arr)
+drawdown = (equity_arr - running_max) / running_max
+max_dd = np.min(drawdown)
 
-for year in sorted(trades_df['year'].unique()):
-    year_trades = trades_df[trades_df['year'] == year].sort_values('date')
+# Profit factor
+total_wins = winning_trades['pnl'].sum()
+total_losses = abs(losing_trades['pnl'].sum())
+profit_factor = total_wins / total_losses if total_losses > 0 else 0
 
-    equity = [current_capital]
-    for _, trade in year_trades.iterrows():
-        current_capital = current_capital * (1 + trade['return'])
-        equity.append(current_capital)
+print(f"\n{'='*80}")
+print("PERFORMANCE METRICS")
+print(f"{'='*80}")
+print(f"Initial Capital:      ${1000:.2f}")
+print(f"Final Capital:        ${capital:.2f}")
+print(f"Total Return:         {total_return*100:.2f}%")
+print(f"Annualized Return:    {annual_return*100:.2f}%")
+print(f"Sharpe Ratio:         {sharpe:.3f}")
+print(f"Max Drawdown:         {max_dd*100:.2f}%")
+print(f"Profit Factor:        {profit_factor:.3f}")
+print(f"Total Trades:         {total_trades}")
+print(f"Trades per year:      {total_trades/years:.0f}")
+print(f"Time period:          {years:.2f} years")
 
-    equity = np.array(equity)
-    running_max = np.maximum.accumulate(equity)
-    drawdown = (equity - running_max) / running_max
-    max_dd = np.min(drawdown)
-
-    # Find recovery days (rough estimate)
-    dd_idx = np.argmin(drawdown)
-    recovery_idx = np.where(equity[dd_idx:] >= running_max[dd_idx])[0]
-    recovery_days = recovery_idx[0] * 3 if len(recovery_idx) > 0 else -1  # Rough estimate
-
-    print(f"{year:<6} {max_dd*100:8.2f}% {recovery_days if recovery_days >= 0 else 'Not recovered':>14}")
+# Compare to full historical backtest
+print(f"\n{'='*80}")
+print("COMPARISON: Recent (2021+) vs Full Historical (2000-2025)")
+print(f"{'='*80}")
+print(f"{'Metric':<25} {'Recent 2021+':<20} {'Full Historical':<20}")
+print("-"*65)
+print(f"{'Annualized Return':<25} {annual_return*100:>8.2f}% {11.75:>19.2f}%")
+print(f"{'Sharpe Ratio':<25} {sharpe:>18.3f} {1.057:>19.3f}")
+print(f"{'Max Drawdown':<25} {max_dd*100:>8.2f}% {-7.7:>19.2f}%")
+print(f"{'Win Rate':<25} {len(winning_trades)/total_trades*100:>8.1f}% {39.6:>19.1f}%")
+print(f"{'Profit Factor':<25} {profit_factor:>18.3f} {1.525:>19.3f}")
+print(f"{'Total Return':<25} {total_return*100:>8.2f}% {821.8:>19.2f}%")
 
 print("\n" + "="*80)
