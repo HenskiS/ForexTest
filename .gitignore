@@ -30,3 +30,9 @@ check_results.py
 
 # Keep only the important fix
 !fix_data_leakage.py
+
+# Additional untracked files to ignore
+keep_files.txt
+analyze_multipair_leverage.py
+visualize_*.py
+xgboost_trades_*.csv
