@@ -4,14 +4,14 @@ __pycache__/
 *.pyc
 *.pyo
 .env
-
+results
+QQQ
 # Jupyter
 .ipynb_checkpoints/
 
 # Model results and checkpoints
 *.pkl
 *_checkpoint.pkl
-
 # Generated summaries
 *_summary.json
 performance_summary.json
