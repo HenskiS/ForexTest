@@ -305,14 +305,45 @@ for window_idx in range(start_window, n_windows):
         X_train, y_train, X_val, y_val, N_ITER, IS_BINARY
     )
 
+    # Retrain on train+val with best hyperparameters
+    print(f"\nRetraining on combined train+val data with best params...")
+    X_train_val = np.vstack([X_train, X_val])
+    y_train_val = np.concatenate([y_train, y_val])
+
+    if IS_BINARY:
+        final_model = xgb.XGBClassifier(
+            n_estimators=best_params['n_estimators'],
+            learning_rate=best_params['learning_rate'],
+            max_depth=best_params['max_depth'],
+            gamma=best_params['gamma'],
+            scale_pos_weight=best_params.get('scale_pos_weight', 1.0),
+            objective='binary:logistic',
+            eval_metric='logloss',
+            random_state=42,
+            n_jobs=-1
+        )
+    else:
+        final_model = xgb.XGBRegressor(
+            n_estimators=best_params['n_estimators'],
+            learning_rate=best_params['learning_rate'],
+            max_depth=best_params['max_depth'],
+            gamma=best_params['gamma'],
+            objective='reg:squarederror',
+            random_state=42,
+            n_jobs=-1
+        )
+
+    final_model.fit(X_train_val, y_train_val, verbose=False)
+    print(f"Final model trained on {len(X_train_val)} days (train: {len(X_train)} + val: {len(X_val)})")
+
     # Make predictions on test set
     if IS_BINARY:
-        y_pred = best_model.predict_proba(X_test)[:, 1]  # Probability of class 1
-        y_pred_class = best_model.predict(X_test)
+        y_pred = final_model.predict_proba(X_test)[:, 1]  # Probability of class 1
+        y_pred_class = final_model.predict(X_test)
         test_accuracy = np.mean(y_test == y_pred_class)
         test_metric = test_accuracy
     else:
-        y_pred = best_model.predict(X_test)
+        y_pred = final_model.predict(X_test)
         test_metric = np.mean(np.abs(y_test - y_pred))
 
     # Store results

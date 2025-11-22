@@ -17,22 +17,39 @@ import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument('--target', type=str, required=True,
                     help='Target name (e.g., target_binary, target_5day_return)')
+parser.add_argument('--pair', type=str, default='EURUSD',
+                    help='Currency pair (e.g., EURUSD, GBPUSD, USDJPY, AUDUSD)')
 args = parser.parse_args()
 
 TARGET = args.target
+PAIR = args.pair.upper()
 IS_BINARY = 'binary' in TARGET.lower()
 
 print(f"Backtesting XGBoost predictions for: {TARGET}")
+print(f"Currency Pair: {PAIR}")
 print(f"Prediction type: {'CLASSIFICATION' if IS_BINARY else 'REGRESSION'}")
 print("="*70)
 
 # Load data and results
 print("\nLoading data and results...")
-df = pd.read_csv('data/EURUSD_1day_with_features_FIXED_multitarget.csv',
+df = pd.read_csv(f'data/{PAIR}_1day_with_features_FIXED_multitarget.csv',
                  index_col='date', parse_dates=True)
-df_clean = df.dropna()
 
-with open(f'xgboost_results_{TARGET}.pkl', 'rb') as f:
+# Drop rows where technical features are NaN (same as training script)
+technical_features = [
+    'momentum', 'avg_price', 'range', 'ohlc',
+    'ema_10', 'ema_20', 'ema_50', 'ema_100', 'ema_200',
+    'macd', 'macd_signal', 'macd_hist',
+    'adx', 'plus_di', 'minus_di',
+    'rsi', 'stoch_k', 'stoch_d', 'cci', 'williams_r',
+    'bb_upper', 'bb_middle', 'bb_lower', 'bb_width', 'bb_position',
+    'atr'
+]
+df_clean = df.dropna(subset=technical_features + [TARGET])
+
+print(f"Loaded data: {df_clean.shape[0]} days ({df_clean.index.min()} to {df_clean.index.max()})")
+
+with open(f'xgboost_results_{PAIR}_{TARGET}.pkl', 'rb') as f:
     all_results = pickle.load(f)
 
 print(f"Loaded {len(all_results)} windows of predictions")
@@ -45,7 +62,7 @@ ROLL_DAYS = 126
 WINDOW_SIZE = TRAIN_DAYS + VAL_DAYS + TEST_DAYS
 
 
-def generate_windows(df, window_size, roll_days, min_windows=40):
+def generate_windows(df, window_size, roll_days, min_windows=None):
     """Generate rolling walk-forward windows."""
     windows = []
     start_idx = 0
@@ -70,7 +87,7 @@ def generate_windows(df, window_size, roll_days, min_windows=40):
         windows.append(window)
         start_idx += roll_days
 
-        if len(windows) >= min_windows:
+        if min_windows is not None and len(windows) >= min_windows:
             break
 
     return windows
@@ -357,8 +374,10 @@ def calculate_performance_metrics(results, risk_free_rate=0.0):
     }
 
 
-# Generate windows
-windows = generate_windows(df_clean, WINDOW_SIZE, ROLL_DAYS, min_windows=40)
+# Generate windows (generate all available windows to match training)
+windows = generate_windows(df_clean, WINDOW_SIZE, ROLL_DAYS)
+print(f"\nGenerated {len(windows)} windows")
+print(f"All results has {len(all_results)} windows")
 
 # Generate signals for all strategies
 strategies = ['buy_sell', 'only_buy', 'only_sell']
