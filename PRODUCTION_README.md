@@ -29,7 +29,7 @@ This system implements a quantitative forex trading strategy with:
 ### Install Dependencies
 
 ```bash
-pip install pandas numpy xgboost scikit-learn python-dotenv requests ta tqdm
+pip install pandas numpy xgboost scikit-learn python-dotenv requests ta tqdm pytz
 ```
 
 ## Setup
@@ -195,28 +195,33 @@ python backtest_oanda_data.py --pair EURUSD --test-days 500
 
 ### Scheduled Run (5:30 PM ET Daily)
 
-1. **Fetch Latest Data**
+1. **Check Market Hours**
+   - Verify forex market is open (Sunday 5:00 PM ET to Friday 5:00 PM ET)
+   - If closed (weekends), exit cleanly with log message
+   - If open, proceed with trading logic
+
+2. **Fetch Latest Data**
    - Load historical CSV (5000 days)
    - Fetch latest 5 candles from OANDA API
    - Detect new candles (today's close at 5:00 PM)
    - Append new data to historical CSV
 
-2. **Train Model**
+3. **Train Model**
    - Extract last 756 days as training window
    - Engineer 26 technical indicators
    - Scale features with MinMaxScaler
    - Train XGBoost on 756 days (no train/val split)
 
-3. **Generate Prediction**
+4. **Generate Prediction**
    - Predict next 5-day return
    - Add prediction to rolling buffer (200 max)
    - Save buffer to disk
 
-4. **Calculate Thresholds**
+5. **Calculate Thresholds**
    - Compute 48th/52nd percentiles from buffer
    - Generate signal: Long (>52nd), Short (<48th), Hold (between)
 
-5. **Manage Position**
+6. **Manage Position**
    - **If in position**: Check for exit
      - Stop-loss hit (ATR-adjusted)
      - Take-profit hit (ATR-adjusted)
@@ -225,11 +230,11 @@ python backtest_oanda_data.py --pair EURUSD --test-days 500
      - Signal generated (long/short)
      - Not in cooldown (skip 1 day after loss)
 
-6. **Execute Trade** (if applicable)
+7. **Execute Trade** (if applicable)
    - Place market order via OANDA API
    - Update state JSON (position, entry price, holding days)
 
-7. **Log Results**
+8. **Log Results**
    - Print summary (signal, position, equity)
    - Save state for next run
 
@@ -385,6 +390,19 @@ crontab -e
 ```
 
 ## Safety Features
+
+### Market Hours Check
+- Script automatically checks if forex market is open before executing
+- Market hours: Sunday 5:00 PM ET to Friday 5:00 PM ET
+- If market is closed, script exits cleanly with log message
+- Prevents unnecessary API calls and ensures trades only execute when market is open
+
+Example output when market is closed:
+```
+Forex market is CLOSED (current time: Saturday 2025-11-23 14:30:00 EST)
+Market hours: Sunday 5:00 PM ET to Friday 5:00 PM ET
+Exiting without executing any trading logic.
+```
 
 ### Dry-Run Mode
 Test without real trades:

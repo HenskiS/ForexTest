@@ -37,3 +37,4 @@ openpyxl>=3.1.0  # For Excel file support if needed
 # API and Web
 requests>=2.31.0  # For OANDA API calls
 python-dotenv>=1.0.0  # For environment variables
+pytz>=2023.3  # For timezone handling in market hours check

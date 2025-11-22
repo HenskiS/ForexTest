@@ -22,8 +22,44 @@ from dotenv import load_dotenv
 import json
 
 from oanda_data_fetcher import OandaDataFetcher
+import pytz
 
 load_dotenv()
+
+
+def is_forex_market_open():
+    """
+    Check if forex market is currently open.
+    Forex market is open Sunday 5:00 PM ET to Friday 5:00 PM ET.
+
+    Returns:
+        bool: True if market is open, False if closed
+    """
+    # Get current time in ET
+    et_tz = pytz.timezone('America/New_York')
+    now_et = datetime.now(et_tz)
+
+    # Get day of week (0 = Monday, 6 = Sunday)
+    weekday = now_et.weekday()
+    hour = now_et.hour
+    minute = now_et.minute
+
+    # Market is closed Friday 5:00 PM ET to Sunday 5:00 PM ET
+
+    # Friday after 5:00 PM (17:00) - CLOSED
+    if weekday == 4 and (hour > 17 or (hour == 17 and minute >= 0)):
+        return False
+
+    # Saturday all day - CLOSED
+    if weekday == 5:
+        return False
+
+    # Sunday before 5:00 PM (17:00) - CLOSED
+    if weekday == 6 and hour < 17:
+        return False
+
+    # All other times - OPEN
+    return True
 
 
 class OandaTrader:
@@ -695,6 +731,15 @@ class OandaTrader:
         print(f"Pair: {self.pair}")
         print(f"Mode: {'DRY RUN' if dry_run else 'LIVE'}")
         print(f"{'='*70}\n")
+
+        # Check if market is open
+        if not is_forex_market_open():
+            et_tz = pytz.timezone('America/New_York')
+            now_et = datetime.now(et_tz)
+            print(f"Forex market is CLOSED (current time: {now_et.strftime('%A %Y-%m-%d %H:%M:%S %Z')})")
+            print(f"Market hours: Sunday 5:00 PM ET to Friday 5:00 PM ET")
+            print(f"Exiting without executing any trading logic.")
+            return
 
         # Step 1: Fetch data and train model
         df = self.fetch_latest_data()
