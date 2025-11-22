@@ -93,10 +93,14 @@ print("="*70)
 predictions = []
 actuals = []
 dates = []
+prediction_buffer = []  # Rolling buffer for percentile calculation
+signals = []  # Store signals calculated with rolling buffer
 
 model = None
 scaler = None
 last_train_day = -999
+BUFFER_SIZE = 200
+BUFFER_WARMUP = 50
 
 for i, date in enumerate(df_2025.index):
     current_idx = df_clean.index.get_loc(date)
@@ -147,6 +151,28 @@ for i, date in enumerate(df_2025.index):
     actuals.append(y_actual)
     dates.append(date)
 
+    # Update rolling buffer and calculate signal (mimics production)
+    prediction_buffer.append(y_pred)
+    if len(prediction_buffer) > BUFFER_SIZE:
+        prediction_buffer = prediction_buffer[-BUFFER_SIZE:]
+
+    # Generate signal using rolling buffer
+    if len(prediction_buffer) >= BUFFER_WARMUP:
+        buffer_array = np.array(prediction_buffer)
+        lower_threshold = np.percentile(buffer_array, 48)
+        upper_threshold = np.percentile(buffer_array, 52)
+
+        if y_pred >= upper_threshold:
+            signal = 1  # Long
+        elif y_pred <= lower_threshold:
+            signal = -1  # Short
+        else:
+            signal = 0  # Hold
+    else:
+        signal = 0  # No signal during warmup
+
+    signals.append(signal)
+
 n_retrains = len([i for i in range(len(df_2025)) if i % RETRAIN_DAYS == 0])
 print(f"\nCompleted {len(predictions)} predictions with {n_retrains} model retrainings")
 print(f"Average {len(predictions) / max(n_retrains, 1):.1f} predictions per model")
@@ -180,13 +206,8 @@ print(f"\n2025 Prediction Quality:")
 print(f"  MAE: {mae:.6f}")
 print(f"  Correlation: {correlation:.4f}")
 
-# Generate trading signals
-long_threshold = np.percentile(predictions, 48)
-short_threshold = np.percentile(predictions, 52)
-
-signals = np.zeros(len(predictions))
-signals[predictions >= short_threshold] = 1   # Long
-signals[predictions <= long_threshold] = -1   # Short
+# Signals were already calculated with rolling buffer (no lookahead bias)
+signals = np.array(signals)
 
 n_long = np.sum(signals == 1)
 n_short = np.sum(signals == -1)

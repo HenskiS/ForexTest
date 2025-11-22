@@ -1,0 +1,167 @@
+{
+  "pair": "EURUSD",
+  "best_params": {
+    "subsample": 0.9,
+    "n_estimators": 125,
+    "max_depth": 5,
+    "learning_rate": 0.1,
+    "gamma": 0.1,
+    "colsample_bytree": 0.7
+  },
+  "best_val_mae": 0.0065484666564367576,
+  "best_val_corr": NaN,
+  "train_days": 600,
+  "val_days": 156,
+  "all_results": [
+    {
+      "iteration": 25,
+      "params": {
+        "subsample": 0.9,
+        "n_estimators": 125,
+        "max_depth": 5,
+        "learning_rate": 0.1,
+        "gamma": 0.1,
+        "colsample_bytree": 0.7
+      },
+      "train_mae": 0.007295581955986045,
+      "val_mae": 0.0065484666564367576,
+      "train_corr": NaN,
+      "val_corr": NaN
+    },
+    {
+      "iteration": 11,
+      "params": {
+        "subsample": 0.8,
+        "n_estimators": 100,
+        "max_depth": 3,
+        "learning_rate": 0.05,
+        "gamma": 0.01,
+        "colsample_bytree": 0.7
+      },
+      "train_mae": 0.007295752063800528,
+      "val_mae": 0.0065484978117141355,
+      "train_corr": NaN,
+      "val_corr": NaN
+    },
+    {
+      "iteration": 26,
+      "params": {
+        "subsample": 0.8,
+        "n_estimators": 125,
+        "max_depth": 10,
+        "learning_rate": 0.05,
+        "gamma": 0.1,
+        "colsample_bytree": 0.9
+      },
+      "train_mae": 0.0072957793835661785,
+      "val_mae": 0.006548502815334218,
+      "train_corr": NaN,
+      "val_corr": NaN
+    },
+    {
+      "iteration": 1,
+      "params": {
+        "subsample": 0.9,
+        "n_estimators": 200,
+        "max_depth": 5,
+        "learning_rate": 0.1,
+        "gamma": 0.01,
+        "colsample_bytree": 0.9
+      },
+      "train_mae": 0.0072965098134586065,
+      "val_mae": 0.006548636593702794,
+      "train_corr": NaN,
+      "val_corr": NaN
+    },
+    {
+      "iteration": 14,
+      "params": {
+        "subsample": 0.8,
+        "n_estimators": 100,
+        "max_depth": 7,
+        "learning_rate": 0.02,
+        "gamma": 0.01,
+        "colsample_bytree": 0.9
+      },
+      "train_mae": 0.007296993306080759,
+      "val_mae": 0.006548725145465093,
+      "train_corr": NaN,
+      "val_corr": NaN
+    },
+    {
+      "iteration": 30,
+      "params": {
+        "subsample": 0.9,
+        "n_estimators": 50,
+        "max_depth": 8,
+        "learning_rate": 0.1,
+        "gamma": 0.01,
+        "colsample_bytree": 1.0
+      },
+      "train_mae": 0.0072972488813679145,
+      "val_mae": 0.006548771954125745,
+      "train_corr": NaN,
+      "val_corr": NaN
+    },
+    {
+      "iteration": 4,
+      "params": {
+        "subsample": 1.0,
+        "n_estimators": 125,
+        "max_depth": 12,
+        "learning_rate": 0.05,
+        "gamma": 0.1,
+        "colsample_bytree": 0.8
+      },
+      "train_mae": 0.007297593411930784,
+      "val_mae": 0.006548835054961435,
+      "train_corr": NaN,
+      "val_corr": NaN
+    },
+    {
+      "iteration": 13,
+      "params": {
+        "subsample": 1.0,
+        "n_estimators": 300,
+        "max_depth": 12,
+        "learning_rate": 0.05,
+        "gamma": 0.1,
+        "colsample_bytree": 1.0
+      },
+      "train_mae": 0.007297593411930784,
+      "val_mae": 0.006548835054961435,
+      "train_corr": NaN,
+      "val_corr": NaN
+    },
+    {
+      "iteration": 16,
+      "params": {
+        "subsample": 1.0,
+        "n_estimators": 200,
+        "max_depth": 8,
+        "learning_rate": 0.1,
+        "gamma": 0.1,
+        "colsample_bytree": 0.8
+      },
+      "train_mae": 0.007297593411930784,
+      "val_mae": 0.006548835054961435,
+      "train_corr": NaN,
+      "val_corr": NaN
+    },
+    {
+      "iteration": 17,
+      "params": {
+        "subsample": 1.0,
+        "n_estimators": 125,
+        "max_depth": 3,
+        "learning_rate": 0.05,
+        "gamma": 0.1,
+        "colsample_bytree": 0.8
+      },
+      "train_mae": 0.007297593411930784,
+      "val_mae": 0.006548835054961435,
+      "train_corr": NaN,
+      "val_corr": NaN
+    }
+  ]
+}

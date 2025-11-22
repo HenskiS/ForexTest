@@ -33,3 +33,7 @@ notebook>=7.0.0
 tqdm>=4.65.0  # Progress bars
 joblib>=1.3.0  # For model persistence
 openpyxl>=3.1.0  # For Excel file support if needed
+
+# API and Web
+requests>=2.31.0  # For OANDA API calls
+python-dotenv>=1.0.0  # For environment variables
