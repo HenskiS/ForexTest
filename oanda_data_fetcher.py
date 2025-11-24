@@ -301,12 +301,16 @@ if __name__ == "__main__":
     import argparse
 
     # Parse command line arguments
-    parser = argparse.ArgumentParser(description='OANDA Data Fetcher Test')
+    parser = argparse.ArgumentParser(description='OANDA Data Fetcher')
     parser.add_argument('--live', action='store_true', help='Use LIVE account instead of practice')
+    parser.add_argument('--pair', type=str, default='EURUSD', help='Currency pair (e.g., EURUSD, GBPUSD)')
+    parser.add_argument('--count', type=int, default=5000, help='Number of candles to fetch (max 5000)')
     args = parser.parse_args()
 
-    # Test the OANDA data fetcher
-    print("OANDA Data Fetcher Test")
+    PAIR = args.pair.upper()
+
+    # Fetch OANDA data
+    print(f"OANDA Data Fetcher - {PAIR}")
     print("=" * 70)
 
     try:
@@ -314,13 +318,13 @@ if __name__ == "__main__":
         fetcher = OandaDataFetcher(practice=not args.live)
 
         if args.live:
-            print("⚠ WARNING: Using LIVE account (read-only, fetching data only)")
+            print("Using LIVE account (read-only, fetching data only)")
             print()
 
         # Test 1: Get current price
-        print("\nTest 1: Current EURUSD Price")
+        print(f"\nCurrent {PAIR} Price")
         print("-" * 70)
-        price = fetcher.get_current_price('EURUSD')
+        price = fetcher.get_current_price(PAIR)
         if price:
             print(f"Bid: {price['bid']:.5f}")
             print(f"Ask: {price['ask']:.5f}")
@@ -328,10 +332,10 @@ if __name__ == "__main__":
             print(f"Spread: {price['spread_pips']:.1f} pips")
             print(f"Time: {price['time']}")
 
-        # Test 2: Get last 756 days of daily data (for training)
-        print("\n\nTest 2: Historical Daily Data (last 756 days)")
+        # Test 2: Get historical daily data
+        print(f"\n\nHistorical Daily Data (last {args.count} days)")
         print("-" * 70)
-        df = fetcher.get_historical_data('EURUSD', count=756, granularity='D')
+        df = fetcher.get_historical_data(PAIR, count=args.count, granularity='D')
 
         if not df.empty:
             print(f"\nFirst 5 rows:")
@@ -341,7 +345,8 @@ if __name__ == "__main__":
             print(f"\nData shape: {df.shape}")
 
             # Save to CSV
-            fetcher.save_data(df, 'EURUSD_1day_oanda.csv')
+            filename = f'{PAIR}_1day_oanda.csv'
+            fetcher.save_data(df, filename)
 
     except ValueError as e:
         print(f"\nERROR: {e}")

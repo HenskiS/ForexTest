@@ -150,6 +150,7 @@ def backtest_strategy(predictions, df_prices, test_indices,
 
     position = 0
     entry_price = 0.0
+    entry_date = None
     cooldown_remaining = 0
     holding_days = 0
 
@@ -158,6 +159,7 @@ def backtest_strategy(predictions, df_prices, test_indices,
     signals_list = []
 
     test_data = df_prices.iloc[test_indices]
+    test_dates_array = test_data.index
     opens = test_data['open'].values
     highs = test_data['high'].values
     lows = test_data['low'].values
@@ -251,18 +253,29 @@ def backtest_strategy(predictions, df_prices, test_indices,
                 new_equity = current_equity * (1 + net_return_pct / 100)
                 equity.append(new_equity)
 
-                trades.append({'net_return_pct': net_return_pct, 'outcome': outcome})
+                # Store detailed trade info
+                trades.append({
+                    'entry_date': entry_date,
+                    'exit_date': test_dates_array[i],
+                    'direction': 'LONG' if position == 1 else 'SHORT',
+                    'entry_price': entry_price,
+                    'exit_price': exit_price,
+                    'net_return_pct': net_return_pct,
+                    'outcome': outcome
+                })
 
                 if net_return_pct < 0 and loss_cooldown_days > 0:
                     cooldown_remaining = loss_cooldown_days
 
                 position = 0
+                entry_date = None
                 holding_days = 0
 
         # Check for entry
         if position == 0 and signal != 0 and cooldown_remaining == 0:
             position = signal
             entry_price = open_price
+            entry_date = test_dates_array[i]
             holding_days = 0
 
     final_equity = equity[-1]
@@ -345,5 +358,12 @@ if len(result['trades']) > 0:
         print(f"  Profit Factor: {profit_factor:.2f}")
 
 print("\n" + "="*80)
-print("✓ Backtest complete!")
+print("Backtest complete!")
 print("="*80)
+
+# Save trade details to CSV for visualization
+if len(result['trades']) > 0:
+    trades_output_file = f'{PAIR}_backtest_trades_{TEST_DAYS}days.csv'
+    result['trades'].to_csv(trades_output_file, index=False)
+    print(f"\nTrade details saved to: {trades_output_file}")
+    print(f"Use plot_backtest_trades.py to visualize these trades")
