@@ -30,17 +30,96 @@ print("="*80)
 print(f"Test period: Last {TEST_DAYS} days")
 print("="*80)
 
-# Load OANDA engineered data
-data_file = f'data/{PAIR}_oanda_engineered.csv'
+# Load raw OANDA data and calculate features fresh
+data_file = f'data/{PAIR}_1day_oanda.csv'
 if not os.path.exists(data_file):
     print(f"\nERROR: {data_file} not found")
-    print("Run initialize_oanda_buffer.py first to fetch and engineer OANDA data")
+    print("Run: python oanda_data_fetcher.py")
     sys.exit(1)
 
-df = pd.read_csv(data_file, index_col='date', parse_dates=True)
-print(f"\nLoaded {len(df)} days of OANDA data")
-print(f"Date range: {df.index.min()} to {df.index.max()}")
+df_raw = pd.read_csv(data_file)
+df_raw['date'] = pd.to_datetime(df_raw['date'])
+df_raw = df_raw.set_index('date')
+print(f"\nLoaded {len(df_raw)} days of raw OANDA data")
+print(f"Date range: {df_raw.index.min()} to {df_raw.index.max()}")
 
+# Calculate features fresh (matching production trader)
+print("\nCalculating technical features...")
+def calculate_features(df):
+    """Calculate all technical features (same as production trader)"""
+    # Basic features
+    df['momentum'] = df['close'].pct_change()
+    df['avg_price'] = (df['open'] + df['high'] + df['low'] + df['close']) / 4
+    df['range'] = df['high'] - df['low']
+    df['ohlc'] = (df['open'] + df['high'] + df['low'] + df['close']) / 4
+
+    # EMAs
+    for period in [10, 20, 50, 100, 200]:
+        df[f'ema_{period}'] = df['close'].ewm(span=period, adjust=False).mean()
+
+    # MACD
+    ema_12 = df['close'].ewm(span=12, adjust=False).mean()
+    ema_26 = df['close'].ewm(span=26, adjust=False).mean()
+    df['macd'] = ema_12 - ema_26
+    df['macd_signal'] = df['macd'].ewm(span=9, adjust=False).mean()
+    df['macd_hist'] = df['macd'] - df['macd_signal']
+
+    # ADX
+    plus_dm = df['high'].diff()
+    minus_dm = -df['low'].diff()
+    plus_dm[plus_dm < 0] = 0
+    minus_dm[minus_dm < 0] = 0
+    tr = pd.concat([df['high'] - df['low'], abs(df['high'] - df['close'].shift()), abs(df['low'] - df['close'].shift())], axis=1).max(axis=1)
+    atr = tr.rolling(window=14).mean()
+    plus_di = 100 * (plus_dm.rolling(window=14).mean() / atr)
+    minus_di = 100 * (minus_dm.rolling(window=14).mean() / atr)
+    dx = (abs(plus_di - minus_di) / (plus_di + minus_di)) * 100
+    df['adx'] = dx.rolling(window=14).mean()
+    df['plus_di'] = plus_di
+    df['minus_di'] = minus_di
+
+    # RSI
+    delta = df['close'].diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+    rs = gain / loss
+    df['rsi'] = 100 - (100 / (1 + rs))
+
+    # Stochastic
+    lowest_low = df['low'].rolling(window=14).min()
+    highest_high = df['high'].rolling(window=14).max()
+    df['stoch_k'] = 100 * ((df['close'] - lowest_low) / (highest_high - lowest_low))
+    df['stoch_d'] = df['stoch_k'].rolling(window=3).mean()
+
+    # CCI
+    tp = (df['high'] + df['low'] + df['close']) / 3
+    sma = tp.rolling(window=20).mean()
+    mad = tp.rolling(window=20).apply(lambda x: np.abs(x - x.mean()).mean())
+    df['cci'] = (tp - sma) / (0.015 * mad)
+
+    # Williams %R
+    df['williams_r'] = -100 * ((highest_high - df['close']) / (highest_high - lowest_low))
+
+    # Bollinger Bands
+    middle = df['close'].rolling(window=20).mean()
+    std = df['close'].rolling(window=20).std()
+    df['bb_upper'] = middle + (std * 2)
+    df['bb_middle'] = middle
+    df['bb_lower'] = middle - (std * 2)
+    df['bb_width'] = df['bb_upper'] - df['bb_lower']
+    df['bb_position'] = (df['close'] - df['bb_lower']) / (df['bb_upper'] - df['bb_lower'])
+
+    # ATR
+    df['atr'] = atr
+
+    return df
+
+df = calculate_features(df_raw.copy())
+
+# Calculate target (5-day forward return)
+df[TARGET] = df['close'].pct_change(5).shift(-5)
+
+# Define feature list for subsetting
 technical_features = [
     'momentum', 'avg_price', 'range', 'ohlc',
     'ema_10', 'ema_20', 'ema_50', 'ema_100', 'ema_200',
@@ -50,6 +129,11 @@ technical_features = [
     'bb_upper', 'bb_middle', 'bb_lower', 'bb_width', 'bb_position',
     'atr'
 ]
+
+# Drop rows with missing features or targets
+df = df.dropna(subset=technical_features + [TARGET])
+print(f"Clean data: {len(df)} days ({df.index.min()} to {df.index.max()})")
+print(f"(Last 5+ days excluded - no realized 5-day returns yet)")
 
 # Load hyperparameters
 hyperparam_file = f'hyperparams_rolling_daily_{PAIR}.pkl'
