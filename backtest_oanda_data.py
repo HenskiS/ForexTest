@@ -143,12 +143,14 @@ if os.path.exists(hyperparam_file):
     print(f"\nUsing optimized hyperparameters from {hyperparam_file}")
 else:
     best_params = {
-        'n_estimators': 250,
-        'learning_rate': 0.05,
-        'max_depth': 10,
-        'gamma': 0.001
+        'n_estimators': 125,
+        'learning_rate': 0.1,
+        'max_depth': 5,
+        'gamma': 0.1,
+        'subsample': 0.9,
+        'colsample_bytree': 0.7
     }
-    print(f"\nUsing default hyperparameters")
+    print(f"\nUsing default hyperparameters (optimized)")
 
 print(f"  {best_params}")
 
