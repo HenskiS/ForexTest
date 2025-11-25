@@ -755,7 +755,6 @@ class OandaTrader:
             print(f"  Entry: {current_price:.5f}")
             print(f"  Stop Loss: {stop_price:.5f} ({stop_loss_pct*100:.2f}%)")
             print(f"  Take Profit: {target_price:.5f} ({take_profit_pct*100:.2f}%)")
-            print(f"  Volatility adjustment: {vol_ratio:.2f}x")
 
             response = requests.post(url, headers=self.headers, json=order_data)
             response.raise_for_status()
@@ -883,7 +882,6 @@ class OandaTrader:
             print(f"  Entry: {current_price:.5f}")
             print(f"  Stop Loss: {stop_price:.5f} ({stop_loss_pct*100:.2f}%)")
             print(f"  Take Profit: {target_price:.5f} ({take_profit_pct*100:.2f}%)")
-            print(f"  Volatility adjustment: {vol_ratio:.2f}x")
         else:
             success = self.place_order(signal, current_price, df_clean)
             if success:
