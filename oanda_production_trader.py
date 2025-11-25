@@ -1,8 +1,10 @@
 """
-OANDA Production Trading Bot v2
+OANDA Production Trading Bot v3 - Optimized 1-Day Model
 Implements rolling daily retraining with:
+- 1-day target predictions (eliminates look-ahead bias)
+- 1-day holding period with tight stops
+- Optimized parameters: 0.18% stop loss, 2.00% take profit
 - Volatility-adjusted stops
-- 5-day holding period exit
 - 1-day loss cooldown
 - Position state persistence
 - Realistic same-day exit then re-entry logic
@@ -99,11 +101,11 @@ class OandaTrader:
             'Content-Type': 'application/json'
         }
 
-        # Trading configuration (matching backtest)
-        self.TRAIN_WINDOW_SIZE = 756  # 600 train + 156 val
-        self.BASE_STOP_LOSS_PCT = 0.0040  # 0.40%
-        self.BASE_TAKE_PROFIT_PCT = 0.0100  # 1.00%
-        self.HOLDING_PERIOD = 5  # days
+        # Trading configuration (optimized 1-day model)
+        self.TRAIN_WINDOW_SIZE = 756  # 756-day training window
+        self.BASE_STOP_LOSS_PCT = 0.0018  # 0.18% (optimized via backtest)
+        self.BASE_TAKE_PROFIT_PCT = 0.0200  # 2.00% (optimized via backtest)
+        self.HOLDING_PERIOD = 1  # 1 day (optimized for 1-day predictions)
         self.LOSS_COOLDOWN_DAYS = 1
         self.LEVERAGE = leverage  # Leverage multiplier (1.0 = no leverage, 2.0 = 2x, etc.)
 
@@ -348,7 +350,7 @@ class OandaTrader:
         return df
 
     def train_model(self, df):
-        """Train XGBoost model on last 756 days"""
+        """Train XGBoost model on last 756 days with 1-day gap"""
         print(f"\n{'='*70}")
         print(f"Training model on last {self.TRAIN_WINDOW_SIZE} days...")
         print(f"{'='*70}")
@@ -356,23 +358,25 @@ class OandaTrader:
         # Calculate features
         df_with_features = self.calculate_features(df.copy())
 
-        # Calculate target
-        df_with_features['target_5day_return'] = df_with_features['close'].pct_change(5).shift(-5)
+        # Calculate target (1-day forward return)
+        df_with_features['target_1day_return'] = df_with_features['close'].pct_change(1).shift(-1)
 
         # Drop NaN rows
-        df_clean = df_with_features.dropna(subset=self.technical_features + ['target_5day_return'])
+        df_clean = df_with_features.dropna(subset=self.technical_features + ['target_1day_return'])
 
-        if len(df_clean) < self.TRAIN_WINDOW_SIZE:
-            raise ValueError(f"Need {self.TRAIN_WINDOW_SIZE} days, have {len(df_clean)}")
+        if len(df_clean) < self.TRAIN_WINDOW_SIZE + 1:
+            raise ValueError(f"Need {self.TRAIN_WINDOW_SIZE + 1} days, have {len(df_clean)}")
 
-        # Take last 756 days
-        train_data = df_clean.iloc[-self.TRAIN_WINDOW_SIZE:].copy()
+        # Take last 756 days with 1-day gap (train through yesterday, predict today)
+        # This eliminates look-ahead bias
+        train_data = df_clean.iloc[-(self.TRAIN_WINDOW_SIZE + 1):-1].copy()
 
         print(f"Training data: {len(train_data)} days ({train_data.index[0].date()} to {train_data.index[-1].date()})")
+        print(f"(1-day gap: training excludes today to prevent look-ahead bias)")
 
         # Prepare training data
         X_train = train_data[self.technical_features].values
-        y_train = train_data['target_5day_return'].values
+        y_train = train_data['target_1day_return'].values
 
         # Scale features
         self.scaler = MinMaxScaler()
@@ -443,7 +447,7 @@ class OandaTrader:
         return signal, prediction
 
     def check_and_close_position(self, df_clean, dry_run=False, prediction=None):
-        """Check if position needs to be closed (5-day exit or stops)"""
+        """Check if position needs to be closed (1-day exit or stops)"""
         if self.position == 0:
             return None
 

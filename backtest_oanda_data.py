@@ -21,7 +21,7 @@ parser.add_argument('--test-days', type=int, default=250, help='Number of recent
 args = parser.parse_args()
 
 PAIR = args.pair.upper()
-TARGET = 'target_5day_return'
+TARGET = 'target_1day_return'
 TRAIN_WINDOW_SIZE = 756
 TEST_DAYS = args.test_days
 
@@ -116,8 +116,8 @@ def calculate_features(df):
 
 df = calculate_features(df_raw.copy())
 
-# Calculate target (5-day forward return)
-df[TARGET] = df['close'].pct_change(5).shift(-5)
+# Calculate target (1-day forward return)
+df[TARGET] = df['close'].pct_change(1).shift(-1)
 
 # Define feature list for subsetting
 technical_features = [
@@ -133,7 +133,7 @@ technical_features = [
 # Drop rows with missing features or targets
 df = df.dropna(subset=technical_features + [TARGET])
 print(f"Clean data: {len(df)} days ({df.index.min()} to {df.index.max()})")
-print(f"(Last 5+ days excluded - no realized 5-day returns yet)")
+print(f"(Last day excluded - no realized next-day return yet)")
 
 # Load hyperparameters
 hyperparam_file = f'hyperparams_rolling_daily_{PAIR}.pkl'
@@ -176,8 +176,8 @@ for i in tqdm(range(start_idx, len(df)), desc="Generating predictions"):
     if i < TRAIN_WINDOW_SIZE:
         continue
 
-    # Rolling 756-day window
-    train_end_idx = i
+    # Rolling 756-day window with 1-day gap (train through i-1, predict on i)
+    train_end_idx = i - 1  # Stop training 1 day before prediction
     train_start_idx = train_end_idx - TRAIN_WINDOW_SIZE
     train_data = df.iloc[train_start_idx:train_end_idx]
 
