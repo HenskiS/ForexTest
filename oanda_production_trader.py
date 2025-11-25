@@ -258,6 +258,12 @@ class OandaTrader:
                     # Combine historical + new data
                     df = pd.concat([df_historical, df_new]).sort_index()
                     print(f"Total data: {len(df)} days ({df.index[0].date()} to {df.index[-1].date()})")
+
+                    # Save updated data back to CSV
+                    df_to_save = df.reset_index()
+                    df_to_save.to_csv(main_oanda_file, index=False)
+                    print(f"Saved updated data to {main_oanda_file}")
+
                     return df
                 else:
                     print(f"No new candles found (data up to date)")
@@ -361,15 +367,18 @@ class OandaTrader:
         # Calculate target (1-day forward return)
         df_with_features['target_1day_return'] = df_with_features['close'].pct_change(1).shift(-1)
 
-        # Drop NaN rows
-        df_clean = df_with_features.dropna(subset=self.technical_features + ['target_1day_return'])
+        # Drop rows with invalid features (keep rows with NaN target for prediction)
+        df_clean = df_with_features.dropna(subset=self.technical_features)
 
-        if len(df_clean) < self.TRAIN_WINDOW_SIZE + 1:
-            raise ValueError(f"Need {self.TRAIN_WINDOW_SIZE + 1} days, have {len(df_clean)}")
+        # For training, only use rows with valid targets
+        df_with_target = df_clean[df_clean['target_1day_return'].notna()].copy()
 
-        # Take last 756 days with 1-day gap (train through yesterday, predict today)
+        if len(df_with_target) < self.TRAIN_WINDOW_SIZE:
+            raise ValueError(f"Need {self.TRAIN_WINDOW_SIZE} days with targets, have {len(df_with_target)}")
+
+        # Train on last 756 days that have targets (train through yesterday, predict today)
         # This eliminates look-ahead bias
-        train_data = df_clean.iloc[-(self.TRAIN_WINDOW_SIZE + 1):-1].copy()
+        train_data = df_with_target.iloc[-self.TRAIN_WINDOW_SIZE:].copy()
 
         print(f"Training data: {len(train_data)} days ({train_data.index[0].date()} to {train_data.index[-1].date()})")
         print(f"(1-day gap: training excludes today to prevent look-ahead bias)")
