@@ -22,6 +22,7 @@ from dotenv import load_dotenv
 import json
 
 from oanda_data_fetcher import OandaDataFetcher
+from notification_service import NotificationService
 import pytz
 
 load_dotenv()
@@ -148,6 +149,9 @@ class OandaTrader:
         # Cache directory
         self.cache_dir = 'data/oanda_cache'
         os.makedirs(self.cache_dir, exist_ok=True)
+
+        # Notification service
+        self.notifier = NotificationService()
 
     def load_state(self):
         """Load persisted state from disk"""
@@ -520,6 +524,21 @@ class OandaTrader:
                 if success:
                     print(f"Position closed successfully")
 
+                    # Calculate P&L in dollars
+                    pnl_dollars = position_size_save * (pnl_pct / 100)
+
+                    # Send notification
+                    self.notifier.notify_trade_exit(
+                        pair=self.pair,
+                        direction='LONG' if position_save == 1 else 'SHORT',
+                        entry_price=entry_price_save,
+                        exit_price=current_price,
+                        pnl_pct=pnl_pct,
+                        pnl_dollars=pnl_dollars,
+                        exit_reason=close_reason,
+                        days_held=(datetime.now() - entry_date_save).days
+                    )
+
                     # Log trade
                     self.log_trade(
                         entry_date=entry_date_save,
@@ -628,9 +647,49 @@ class OandaTrader:
             print(f"Error fetching account balance: {e}")
             return None
 
+    def get_open_positions(self):
+        """Get all open positions from OANDA to verify no duplicate trades"""
+        instrument = self.fetcher.get_instrument_name(self.pair)
+        url = f"{self.base_url}/accounts/{self.account_id}/openPositions"
+
+        try:
+            response = requests.get(url, headers=self.headers)
+            response.raise_for_status()
+            result = response.json()
+
+            # Check if there's an open position for this instrument
+            for position in result.get('positions', []):
+                if position['instrument'] == instrument:
+                    long_units = float(position['long']['units'])
+                    short_units = float(position['short']['units'])
+
+                    if long_units != 0 or short_units != 0:
+                        return {
+                            'instrument': instrument,
+                            'long_units': long_units,
+                            'short_units': short_units,
+                            'unrealized_pl': float(position.get('unrealizedPL', 0))
+                        }
+
+            return None  # No open position for this instrument
+
+        except requests.exceptions.RequestException as e:
+            print(f"Error fetching open positions: {e}")
+            return None
+
     def place_order(self, signal, current_price, df_clean):
         """Place market order with volatility-adjusted stops"""
         instrument = self.fetcher.get_instrument_name(self.pair)
+
+        # SAFETY CHECK: Verify no existing position at OANDA API level
+        existing_position = self.get_open_positions()
+        if existing_position:
+            print(f"\n⚠️  WARNING: Open position already exists at OANDA!")
+            print(f"  Long units: {existing_position['long_units']}")
+            print(f"  Short units: {existing_position['short_units']}")
+            print(f"  Unrealized P&L: ${existing_position['unrealized_pl']:.2f}")
+            print(f"  Skipping new order to prevent duplicate trade")
+            return False
 
         # Get current account balance
         account_balance = self.get_account_balance()
@@ -708,6 +767,17 @@ class OandaTrader:
                 print(f"Order filled at {self.entry_price:.5f}")
                 print(f"Position size: ${position_size_dollars}")
                 print(f"Trade ID: {self.trade_id}")
+
+                # Send notification
+                self.notifier.notify_trade_entry(
+                    pair=self.pair,
+                    direction='LONG' if signal == 1 else 'SHORT',
+                    entry_price=self.entry_price,
+                    position_size=position_size_dollars,
+                    stop_loss=stop_price,
+                    take_profit=target_price
+                )
+
                 return True
             else:
                 print(f"Order not filled: {result}")
