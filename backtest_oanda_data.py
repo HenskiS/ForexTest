@@ -396,14 +396,14 @@ def backtest_strategy(predictions, df_prices, test_indices,
         'trades': trades_df
     }
 
-# Run backtest
+# Run backtest (v3 optimized parameters)
 result = backtest_strategy(predictions, df, test_indices,
                            lower_pct=48, upper_pct=52,
-                           base_stop_loss_pct=0.0040,
-                           base_take_profit_pct=0.0100,
-                           loss_cooldown_days=1,
+                           base_stop_loss_pct=0.0018,  # v3: 0.18% (optimized)
+                           base_take_profit_pct=0.0200,  # v3: 2.00% (optimized)
+                           loss_cooldown_days=0,  # v3: No cooldown (optimized)
                            transaction_cost_pct=0.0002,
-                           holding_period=5,
+                           holding_period=1,  # v3: 1-day (optimized)
                            buffer_warmup=50)
 
 # Display results

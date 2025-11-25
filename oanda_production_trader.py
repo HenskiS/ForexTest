@@ -5,7 +5,7 @@ Implements rolling daily retraining with:
 - 1-day holding period with tight stops
 - Optimized parameters: 0.18% stop loss, 2.00% take profit
 - Volatility-adjusted stops
-- 1-day loss cooldown
+- No cooldown (immediate re-entry after exits)
 - Position state persistence
 - Realistic same-day exit then re-entry logic
 
@@ -106,7 +106,7 @@ class OandaTrader:
         self.BASE_STOP_LOSS_PCT = 0.0018  # 0.18% (optimized via backtest)
         self.BASE_TAKE_PROFIT_PCT = 0.0200  # 2.00% (optimized via backtest)
         self.HOLDING_PERIOD = 1  # 1 day (optimized for 1-day predictions)
-        self.LOSS_COOLDOWN_DAYS = 1
+        self.LOSS_COOLDOWN_DAYS = 0  # No cooldown (optimized - immediate re-entry is best)
         self.LEVERAGE = leverage  # Leverage multiplier (1.0 = no leverage, 2.0 = 2x, etc.)
 
         # Pair-specific thresholds

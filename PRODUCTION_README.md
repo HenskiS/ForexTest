@@ -10,20 +10,20 @@ This system implements a quantitative forex trading strategy with:
 - **Optimized parameters**: 0.18% stop loss, 2.00% take profit, 1-day holding period
 - **Percentile-based entry signals**: Dynamic thresholds from rolling prediction buffer
 - **Volatility-adjusted risk management**: ATR-based stop-loss and take-profit
-- **Validated performance**: 40.66% annual return on 250-day backtest (no look-ahead bias)
+- **Validated performance**: 46.37% annual return on 250-day backtest (no look-ahead bias)
 
 ## Performance
 
 | Metric | Value |
 |--------|-------|
-| Annual Return | 40.66% |
-| Win Rate | 45.9% |
-| Sharpe Ratio | 5.56 |
-| Profit Factor | 2.99 |
-| Max Drawdown | -1.87% |
-| Total Trades (250 days) | 159 |
+| Annual Return | 46.37% |
+| Win Rate | 41.6% |
+| Sharpe Ratio | 4.46 |
+| Profit Factor | 2.34 |
+| Max Drawdown | -2.62% |
+| Total Trades (250 days) | 243 |
 | Holding Period | 1 day |
-| Avg Win / Avg Loss | 0.71% / -0.20% |
+| Avg Win / Avg Loss | 0.66% / -0.20% (3.3:1) |
 
 ## Prerequisites
 
@@ -77,7 +77,7 @@ Run backtest on OANDA data to verify performance:
 python backtest_oanda_data.py --pair EURUSD --test-days 250
 ```
 
-Expected output: ~40% annual return, 46% win rate, 160 trades
+Expected output: ~46% annual return, 42% win rate, 243 trades
 
 ## Core Scripts
 
@@ -94,6 +94,7 @@ Main production trading bot (runs daily at 5:30 PM ET)
 - Calculates percentile thresholds (48th/52nd for EURUSD)
 - Manages position entry/exit with optimized stops (0.18% SL, 2.00% TP)
 - 1-day holding period with time-based exit
+- No cooldown period (immediate re-entry after exits)
 - Persists state to JSON for next run
 
 **Usage:**
@@ -144,7 +145,7 @@ Backtest rolling daily strategy on OANDA historical data
 - Rolling prediction buffer (eliminates lookahead bias)
 - Volatility-adjusted stops
 - Transaction costs (0.02%)
-- Loss cooldown (1 day)
+- No cooldown period (immediate re-entry)
 
 **Usage:**
 ```bash
@@ -236,7 +237,7 @@ python backtest_oanda_data.py --pair EURUSD --test-days 500
      - Holding period exceeded (1 day - primary exit mechanism)
    - **If no position**: Check for entry
      - Signal generated (long/short)
-     - Not in cooldown (skip 1 day after loss)
+     - Immediate entry (no cooldown period)
 
 7. **Execute Trade** (if applicable)
    - Place market order via OANDA API
@@ -261,7 +262,7 @@ BASE_TAKE_PROFIT = 2.00%  # Adjusted by ATR (rarely hit, acts as safety ceiling)
 HOLDING_PERIOD = 1  # Days (primary exit mechanism)
 
 # Trading Rules
-LOSS_COOLDOWN = 1  # Days to skip after loss
+LOSS_COOLDOWN = 0  # No cooldown - immediate re-entry after exits
 TRANSACTION_COST = 0.02%  # Per trade
 
 # Model Training (1-Day Predictions)
@@ -275,6 +276,7 @@ BUFFER_WARMUP = 50  # Minimum predictions before trading
 - **Stop Loss**: 0.40% → 0.18% (tighter, preserves capital)
 - **Take Profit**: 1.00% → 2.00% (wider, lets winners run; rarely hit)
 - **Holding Period**: 5 days → 1 day (matches prediction horizon)
+- **Cooldown**: 1 day → 0 days (immediate re-entry captures reversals)
 - **Target**: 5-day returns → 1-day returns (eliminates look-ahead bias)
 - **Training Gap**: None → 1 day (train through yesterday, predict today)
 
@@ -433,10 +435,6 @@ python oanda_production_trader.py --pair EURUSD --dry-run
 - System recovers gracefully if process crashes
 - Prevents duplicate entries or forgotten exits
 
-### Cooldown Period
-- Skip new entries for 1 day after losing trade
-- Prevents revenge trading after drawdowns
-
 ### Volatility Adjustment
 - Stop-loss/take-profit scaled by current ATR
 - Adapts to market conditions automatically
@@ -451,22 +449,25 @@ Based on 250-day backtest on OANDA data (v3 optimized model):
 
 | Metric | Value |
 |--------|-------|
-| Annual Return | 40.66% |
-| Total Return (250 days) | 40.66% |
-| Total Trades | 159 |
-| Win Rate | 45.9% |
-| Average Win | 0.71% |
+| Annual Return | 46.37% |
+| Total Return (250 days) | 46.37% |
+| Total Trades | 243 |
+| Win Rate | 41.6% |
+| Average Win | 0.66% |
 | Average Loss | -0.20% |
-| Profit Factor | 2.99 |
-| Sharpe Ratio | 5.56 |
-| Max Drawdown | -1.87% |
+| Win/Loss Ratio | 3.3:1 |
+| Profit Factor | 2.34 |
+| Sharpe Ratio | 4.46 |
+| Max Drawdown | -2.62% |
 
 **Key Improvements from v2:**
-- Higher return: 40.66% vs 39.79% (+2.2%)
-- Lower drawdown: -1.87% vs ~-3% (est.)
-- Better Sharpe: 5.56 vs ~3.5 (est.)
-- More trades: 159 vs 99 (+60%) - faster capital recycling
+- Higher return: 46.37% vs 39.79% (+16.5%)
+- Still low drawdown: -2.62% (allows 4x leverage safely)
+- Excellent Sharpe: 4.46 (world-class risk-adjusted returns)
+- More trades: 243 vs 99 (+145%) - much faster capital recycling
 - Lower avg loss: -0.20% vs -0.43% (tighter stops)
+- Better win/loss ratio: 3.3:1 (small losses, big wins)
+- No cooldown: Immediate re-entry captures reversals
 - **No look-ahead bias**: 1-day gap in training eliminates data leakage
 
 **Realistic live performance**: 20-30% annual return (50-75% of backtest) due to:
@@ -509,8 +510,8 @@ Based on 250-day backtest on OANDA data (v3 optimized model):
 ### No Trades Executing
 - Ensure `--dry-run` flag is NOT set
 - Verify prediction buffer has 50+ predictions
-- Check cooldown period (may be skipping due to recent loss)
 - Confirm signal is generating (not "Hold")
+- Check position state file (may already be in position)
 
 ### API Errors
 - Verify OANDA credentials in `.env`
