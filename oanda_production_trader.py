@@ -636,6 +636,20 @@ class OandaTrader:
 
         except requests.exceptions.RequestException as e:
             print(f"Error closing position: {e}")
+
+            # If 404, the position was already closed at OANDA (likely hit stop/TP)
+            # Clear our state to sync with reality
+            if hasattr(e.response, 'status_code') and e.response.status_code == 404:
+                print("Position not found at OANDA - likely already closed by stop/TP")
+                print("Clearing local state to sync with OANDA")
+                self.position = 0
+                self.entry_price = None
+                self.entry_date = None
+                self.trade_id = None
+                self.position_size = 0
+                self.save_state()
+                return True  # State is now synced
+
             return False
 
     def get_account_balance(self):
@@ -817,6 +831,20 @@ class OandaTrader:
             print(f"Exiting without executing any trading logic.")
             return
 
+        # Sync state with OANDA before doing anything
+        if self.position != 0 and not dry_run:
+            actual_position = self.get_open_positions()
+            if not actual_position:
+                print("\n⚠️  State file shows open position, but no position at OANDA")
+                print("Clearing local state to sync with OANDA (position likely closed by stop/TP)")
+                self.position = 0
+                self.entry_price = None
+                self.entry_date = None
+                self.trade_id = None
+                self.position_size = 0
+                self.save_state()
+                print("State synced with OANDA\n")
+
         # Step 1: Fetch data and train model
         df = self.fetch_latest_data()
         df_clean = self.train_model(df)
@@ -898,6 +926,7 @@ if __name__ == "__main__":
     parser.add_argument('--live', action='store_true', help='Use LIVE account')
     parser.add_argument('--dry-run', action='store_true', help='Simulate only, do not place trades')
     parser.add_argument('--leverage', type=float, default=1.0, help='Leverage multiplier (default: 1.0 = no leverage)')
+    parser.add_argument('--yes', action='store_true', help='Skip confirmation prompts (for automated runs)')
     args = parser.parse_args()
 
     # Validate leverage
@@ -909,7 +938,7 @@ if __name__ == "__main__":
         sys.exit(1)
 
     # Confirm if using live account
-    if args.live and not args.dry_run:
+    if args.live and not args.dry_run and not args.yes:
         print(f"\nWARNING: You are about to trade on a LIVE account")
         print(f"Leverage: {args.leverage:.1f}x")
         print(f"Pair: {args.pair}")
@@ -919,7 +948,7 @@ if __name__ == "__main__":
             sys.exit(0)
 
     # Warn about leverage
-    if args.leverage > 1.0 and not args.dry_run:
+    if args.leverage > 1.0 and not args.dry_run and not args.yes:
         print(f"\n⚠️  WARNING: Using {args.leverage:.1f}x leverage increases risk!")
         print(f"Max loss per trade: ~{0.004 * args.leverage * 100:.2f}% of account balance")
         confirm_leverage = input("Type 'YES' to confirm leverage: ")
