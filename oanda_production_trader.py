@@ -102,7 +102,7 @@ class OandaTrader:
         }
 
         # Trading configuration (optimized 1-day model)
-        self.TRAIN_WINDOW_SIZE = 756  # 756-day training window
+        self.TRAIN_WINDOW_SIZE = 378  # 378-day training window (optimized for 1-day predictions)
         self.BASE_STOP_LOSS_PCT = 0.0018  # 0.18% (optimized via backtest)
         self.BASE_TAKE_PROFIT_PCT = 0.0200  # 2.00% (optimized via backtest)
         self.HOLDING_PERIOD = 1  # 1 day (optimized for 1-day predictions)
@@ -356,7 +356,7 @@ class OandaTrader:
         return df
 
     def train_model(self, df):
-        """Train XGBoost model on last 756 days with 1-day gap"""
+        """Train XGBoost model on last 378 days with 1-day gap"""
         print(f"\n{'='*70}")
         print(f"Training model on last {self.TRAIN_WINDOW_SIZE} days...")
         print(f"{'='*70}")
@@ -376,7 +376,7 @@ class OandaTrader:
         if len(df_with_target) < self.TRAIN_WINDOW_SIZE:
             raise ValueError(f"Need {self.TRAIN_WINDOW_SIZE} days with targets, have {len(df_with_target)}")
 
-        # Train on last 756 days that have targets (train through yesterday, predict today)
+        # Train on last 378 days that have targets (train through yesterday, predict today)
         # This eliminates look-ahead bias
         train_data = df_with_target.iloc[-self.TRAIN_WINDOW_SIZE:].copy()
 
@@ -455,7 +455,7 @@ class OandaTrader:
 
         return signal, prediction
 
-    def check_and_close_position(self, df_clean, dry_run=False, prediction=None):
+    def check_and_close_position(self, df_clean=None, dry_run=False, prediction=None):
         """Check if position needs to be closed (1-day exit or stops)"""
         if self.position == 0:
             return None
@@ -487,15 +487,11 @@ class OandaTrader:
 
         print(f"P&L: {pnl_pct:.2f}%")
 
-        # Get current ATR for volatility adjustment
-        latest_atr = df_clean.iloc[-1]['atr']
-        median_atr = df_clean['atr'].median()
-        vol_ratio = latest_atr / median_atr if not np.isnan(latest_atr) else 1.0
-        stop_loss_pct = self.BASE_STOP_LOSS_PCT * vol_ratio
-        take_profit_pct = self.BASE_TAKE_PROFIT_PCT * vol_ratio
+        # Fixed stops (optimized - no ATR adjustment for 1-day holding period)
+        stop_loss_pct = self.BASE_STOP_LOSS_PCT
+        take_profit_pct = self.BASE_TAKE_PROFIT_PCT
 
-        print(f"Volatility ratio: {vol_ratio:.2f}x")
-        print(f"Adjusted stop: {stop_loss_pct*100:.2f}%, take-profit: {take_profit_pct*100:.2f}%")
+        print(f"Stop loss: {stop_loss_pct*100:.2f}%, Take profit: {take_profit_pct*100:.2f}%")
 
         # Check exit conditions
         should_close = False
@@ -717,12 +713,9 @@ class OandaTrader:
         else:
             print(f"Position size: ${position_size_dollars:.2f} (100% of balance, no leverage)")
 
-        # Calculate volatility-adjusted stops
-        latest_atr = df_clean.iloc[-1]['atr']
-        median_atr = df_clean['atr'].median()
-        vol_ratio = latest_atr / median_atr if not np.isnan(latest_atr) else 1.0
-        stop_loss_pct = self.BASE_STOP_LOSS_PCT * vol_ratio
-        take_profit_pct = self.BASE_TAKE_PROFIT_PCT * vol_ratio
+        # Fixed stops (optimized - no ATR adjustment for 1-day holding period)
+        stop_loss_pct = self.BASE_STOP_LOSS_PCT
+        take_profit_pct = self.BASE_TAKE_PROFIT_PCT
 
         # Calculate units based on position size
         units = int(position_size_dollars / current_price)
@@ -778,8 +771,9 @@ class OandaTrader:
                 self.save_state()
 
                 print(f"Order filled at {self.entry_price:.5f}")
-                print(f"Position size: ${position_size_dollars}")
+                print(f"Position size: ${position_size_dollars:.2f}")
                 print(f"Trade ID: {self.trade_id}")
+                print(f"Stop loss: {stop_loss_pct*100:.2f}%, Take profit: {take_profit_pct*100:.2f}%")
 
                 # Send notification
                 self.notifier.notify_trade_entry(
@@ -869,12 +863,9 @@ class OandaTrader:
             else:
                 print(f"Position size: ${position_size_dollars:.2f} (100% of balance, no leverage)")
 
-            # Calculate volatility-adjusted stops for display
-            latest_atr = df_clean.iloc[-1]['atr']
-            median_atr = df_clean['atr'].median()
-            vol_ratio = latest_atr / median_atr if not np.isnan(latest_atr) else 1.0
-            stop_loss_pct = self.BASE_STOP_LOSS_PCT * vol_ratio
-            take_profit_pct = self.BASE_TAKE_PROFIT_PCT * vol_ratio
+            # Fixed stops (optimized - no ATR adjustment for 1-day holding period)
+            stop_loss_pct = self.BASE_STOP_LOSS_PCT
+            take_profit_pct = self.BASE_TAKE_PROFIT_PCT
 
             units = int(position_size_dollars / current_price)
 

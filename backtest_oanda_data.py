@@ -22,7 +22,7 @@ args = parser.parse_args()
 
 PAIR = args.pair.upper()
 TARGET = 'target_1day_return'
-TRAIN_WINDOW_SIZE = 756
+TRAIN_WINDOW_SIZE = 378  # Optimized for 1-day predictions (was 756 for 5-day)
 TEST_DAYS = args.test_days
 
 print(f"Backtesting OANDA Data - {PAIR}")
@@ -250,8 +250,6 @@ def backtest_strategy(predictions, df_prices, test_indices,
     highs = test_data['high'].values
     lows = test_data['low'].values
     closes = test_data['close'].values
-    atr = test_data['atr'].values
-    median_atr = np.median(atr[~np.isnan(atr)])
 
     for i in range(len(predictions)):
         prediction = predictions[i]
@@ -287,14 +285,9 @@ def backtest_strategy(predictions, df_prices, test_indices,
         if cooldown_remaining > 0:
             cooldown_remaining -= 1
 
-        # Volatility-adjusted stops
-        if not np.isnan(atr[i]):
-            vol_ratio = atr[i] / median_atr
-            stop_loss_pct = base_stop_loss_pct * vol_ratio
-            take_profit_pct = base_take_profit_pct * vol_ratio
-        else:
-            stop_loss_pct = base_stop_loss_pct
-            take_profit_pct = base_take_profit_pct
+        # Fixed stops (optimized - no ATR adjustment, multiplier=0.0 performed best)
+        stop_loss_pct = base_stop_loss_pct
+        take_profit_pct = base_take_profit_pct
 
         # Check for exit
         if position != 0:
