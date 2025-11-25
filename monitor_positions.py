@@ -8,7 +8,7 @@ import json
 import requests
 from datetime import datetime
 from dotenv import load_dotenv
-from telegram_notifier import TelegramNotifier
+from notification_service import NotificationService
 
 # Load environment variables
 load_dotenv()
@@ -40,7 +40,7 @@ class PositionMonitor:
         self.state_file = f'data/oanda_cache/{self.pair}_state.json'
 
         # Notifier
-        self.notifier = TelegramNotifier()
+        self.notifier = NotificationService()
 
         # Load state
         self.load_state()
