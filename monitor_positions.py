@@ -195,6 +195,10 @@ class PositionMonitor:
 
                 # Send notification
                 direction = 'LONG' if self.position == 1 else 'SHORT'
+
+                # Calculate days held
+                days_held = (datetime.now() - self.entry_date).days if self.entry_date else 0
+
                 self.notifier.notify_trade_exit(
                     pair=self.pair,
                     direction=direction,
@@ -202,7 +206,8 @@ class PositionMonitor:
                     exit_price=exit_price,
                     pnl_pct=pnl_pct,
                     pnl_dollars=pnl_dollars,
-                    reason="Position closed at OANDA (likely stop-loss or take-profit)"
+                    exit_reason="Position closed at OANDA (likely stop-loss or take-profit)",
+                    days_held=days_held
                 )
 
             # Clear state
