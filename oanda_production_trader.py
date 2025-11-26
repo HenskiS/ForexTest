@@ -230,7 +230,7 @@ class OandaTrader:
 
     def fetch_latest_data(self):
         """Fetch latest data from OANDA"""
-        main_oanda_file = f'data/{self.pair}_1day_oanda.csv'
+        main_oanda_file = f'{self.cache_dir}/{self.pair}_1day_oanda.csv'
         if os.path.exists(main_oanda_file):
             df_historical = pd.read_csv(main_oanda_file)
             df_historical['date'] = pd.to_datetime(df_historical['date'])
