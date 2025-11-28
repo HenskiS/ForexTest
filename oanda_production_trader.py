@@ -466,8 +466,8 @@ class OandaTrader:
         print(f"Position: {'LONG' if self.position == 1 else 'SHORT'}")
         print(f"Entry: {self.entry_price:.5f} on {self.entry_date.date()}")
 
-        # Calculate days held
-        days_held = (datetime.now() - self.entry_date).days
+        # Calculate days held (compare calendar dates, not 24-hour periods)
+        days_held = (datetime.now().date() - self.entry_date.date()).days
         print(f"Days held: {days_held}")
 
         # Get current price
