@@ -20,6 +20,7 @@ import os
 import sys
 from datetime import datetime, timedelta
 from oanda_data_fetcher import OandaDataFetcher
+from trading.config import TradingConfig
 
 # Parse arguments
 parser = argparse.ArgumentParser()
@@ -185,13 +186,9 @@ if os.path.exists(hyperparam_file):
     print(f"Loaded optimized hyperparameters from {hyperparam_file}")
     print(f"  {best_params}")
 else:
-    best_params = {
-        'n_estimators': 250,
-        'learning_rate': 0.05,
-        'max_depth': 10,
-        'gamma': 0.001
-    }
-    print(f"Using default hyperparameters (run optimize_hyperparams_rolling_daily.py for optimal)")
+    # Use centralized config parameters
+    best_params = TradingConfig.XGBOOST_PARAMS.copy()
+    print(f"Using production hyperparameters from TradingConfig")
     print(f"  {best_params}")
 
 # Step 4: Generate predictions for last N days
