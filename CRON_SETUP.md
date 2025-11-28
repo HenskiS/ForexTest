@@ -17,7 +17,7 @@ Add these lines:
 
 ```bash
 # Daily trader - runs at 2:30 PM PT (5:30 PM ET) on weekdays
-30 14 * * 1-5 /home/forex/ForexTest/run_trader.sh
+30 22 * * 1-5 /home/forex/ForexTest/run_trader.sh
 
 # Position monitor - runs every hour, 7 days a week
 0 * * * * /home/forex/ForexTest/monitor_positions.sh
