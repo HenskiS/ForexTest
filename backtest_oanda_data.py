@@ -18,6 +18,7 @@ import sys
 parser = argparse.ArgumentParser()
 parser.add_argument('--pair', type=str, default='EURUSD', help='Currency pair')
 parser.add_argument('--test-days', type=int, default=250, help='Number of recent days to backtest')
+parser.add_argument('--spread-pct', type=float, default=0.0, help='Spread cost per trade as percentage (e.g., 0.03 for 3 pips on EURUSD)')
 args = parser.parse_args()
 
 PAIR = args.pair.upper()
@@ -302,21 +303,25 @@ def backtest_strategy(predictions, df_prices, test_indices,
 
             exit_triggered = False
             exit_price = None
+            exit_reason = None
 
             if pct_low <= -stop_loss_pct:
                 exit_triggered = True
+                exit_reason = 'STOP_LOSS'
                 if position == 1:
                     exit_price = entry_price * (1 - stop_loss_pct)
                 else:
                     exit_price = entry_price * (1 + stop_loss_pct)
             elif pct_high >= take_profit_pct:
                 exit_triggered = True
+                exit_reason = 'TAKE_PROFIT'
                 if position == 1:
                     exit_price = entry_price * (1 + take_profit_pct)
                 else:
                     exit_price = entry_price * (1 - take_profit_pct)
             elif holding_days >= holding_period:
                 exit_triggered = True
+                exit_reason = 'TIME_EXIT'
                 exit_price = close_price
 
             if exit_triggered:
@@ -340,7 +345,8 @@ def backtest_strategy(predictions, df_prices, test_indices,
                     'entry_price': entry_price,
                     'exit_price': exit_price,
                     'net_return_pct': net_return_pct,
-                    'outcome': outcome
+                    'outcome': outcome,
+                    'exit_reason': exit_reason
                 })
 
                 if net_return_pct < 0 and loss_cooldown_days > 0:
@@ -390,12 +396,13 @@ def backtest_strategy(predictions, df_prices, test_indices,
     }
 
 # Run backtest (v3 optimized parameters)
+spread_cost = args.spread_pct / 100.0  # Convert from percentage to decimal
 result = backtest_strategy(predictions, df, test_indices,
                            lower_pct=48, upper_pct=52,
                            base_stop_loss_pct=0.0018,  # v3: 0.18% (optimized)
                            base_take_profit_pct=0.0200,  # v3: 2.00% (optimized)
                            loss_cooldown_days=0,  # v3: No cooldown (optimized)
-                           transaction_cost_pct=0.0002,
+                           transaction_cost_pct=0.0002 + spread_cost,  # Base cost + spread
                            holding_period=1,  # v3: 1-day (optimized)
                            buffer_warmup=50)
 
