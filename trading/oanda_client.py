@@ -136,6 +136,13 @@ class OandaClient:
         # Calculate units based on position size
         units = int(position_size_dollars / current_price)
 
+        # Determine price precision based on instrument
+        # JPY pairs use 3 decimals, others use 5
+        if 'JPY' in instrument:
+            price_precision = 3
+        else:
+            price_precision = 5
+
         # Calculate stop/target prices
         if signal == 1:  # Long
             stop_price = current_price * (1 - stop_loss_pct)
@@ -146,7 +153,7 @@ class OandaClient:
             target_price = current_price * (1 - take_profit_pct)
             order_units = -abs(units)
 
-        # Prepare order
+        # Prepare order with correct precision
         order_data = {
             "order": {
                 "type": "MARKET",
@@ -155,10 +162,10 @@ class OandaClient:
                 "timeInForce": "FOK",
                 "positionFill": "DEFAULT",
                 "stopLossOnFill": {
-                    "price": f"{stop_price:.5f}"
+                    "price": f"{stop_price:.{price_precision}f}"
                 },
                 "takeProfitOnFill": {
-                    "price": f"{target_price:.5f}"
+                    "price": f"{target_price:.{price_precision}f}"
                 }
             }
         }
