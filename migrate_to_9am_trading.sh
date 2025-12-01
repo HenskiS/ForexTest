@@ -102,11 +102,11 @@ echo "=========================================="
 
 # Show current cron
 echo "Current cron schedule:"
-crontab -l | grep "oanda_multi_pair_trader.py" || echo "No existing cron job found"
+crontab -l | grep "run_multi_pair_trader.sh" || echo "No existing cron job found"
 
 echo ""
 echo "New cron schedule (9 AM EST = 6 AM PST):"
-echo "0 9 * * * cd $(pwd) && /usr/bin/python3 oanda_multi_pair_trader.py >> logs/trading.log 2>&1"
+echo "0 9 * * * /home/forex/ForexTest/run_multi_pair_trader.sh"
 echo ""
 read -p "Update cron to 9 AM EST? (y/n) " -n 1 -r
 echo ""
@@ -116,15 +116,15 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
     crontab -l > crontab_backup_$(date +%Y%m%d_%H%M%S).txt
 
     # Remove old trading cron
-    crontab -l | grep -v "oanda_multi_pair_trader.py" | crontab -
+    crontab -l | grep -v "run_multi_pair_trader.sh" | crontab -
 
-    # Add new 9 AM cron
-    (crontab -l 2>/dev/null; echo "0 9 * * * cd $(pwd) && /usr/bin/python3 oanda_multi_pair_trader.py >> logs/trading.log 2>&1") | crontab -
+    # Add new 9 AM EST cron (6 AM PST)
+    (crontab -l 2>/dev/null; echo "0 9 * * * /home/forex/ForexTest/run_multi_pair_trader.sh") | crontab -
 
     echo "✓ Cron updated to 9 AM EST"
     echo ""
     echo "New crontab:"
-    crontab -l | grep "oanda_multi_pair_trader.py"
+    crontab -l | grep "run_multi_pair_trader.sh"
 else
     echo "Cron update skipped - you'll need to update manually"
 fi

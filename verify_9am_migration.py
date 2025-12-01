@@ -54,19 +54,23 @@ print("Check 3: Current position state")
 print("-" * 80)
 has_positions = False
 for pair in PAIRS:
-    state_file = f'position_state_{pair}.pkl'
+    state_file = f'data/oanda_cache/{pair}_state.json'
     if os.path.exists(state_file):
-        import pickle
+        import json
         try:
-            with open(state_file, 'rb') as f:
-                state = pickle.load(f)
-            print(f"✓ {pair}: Position state found (will preserve)")
-            print(f"  → State: {state}")
-            has_positions = True
-        except:
-            print(f"⚠ {pair}: State file exists but couldn't read")
+            with open(state_file, 'r') as f:
+                state = json.load(f)
+            if state.get('position') != 0:
+                print(f"✓ {pair}: Position state found (will preserve)")
+                print(f"  → Direction: {'LONG' if state['position'] == 1 else 'SHORT'}")
+                print(f"  → Entry: {state['entry_price']} @ {state['entry_date']}")
+                has_positions = True
+            else:
+                print(f"○ {pair}: No position state (no open position)")
+        except Exception as e:
+            print(f"⚠ {pair}: State file exists but couldn't read: {e}")
     else:
-        print(f"○ {pair}: No position state (no open position)")
+        print(f"○ {pair}: No position state file found")
 
 print()
 
@@ -83,6 +87,12 @@ if os.path.exists('oanda_multi_pair_trader.py'):
     print("✓ oanda_multi_pair_trader.py found")
 else:
     print("✗ oanda_multi_pair_trader.py MISSING!")
+    all_checks_passed = False
+
+if os.path.exists('run_multi_pair_trader.sh'):
+    print("✓ run_multi_pair_trader.sh found")
+else:
+    print("✗ run_multi_pair_trader.sh MISSING!")
     all_checks_passed = False
 
 if os.path.exists('oanda_data_fetcher.py'):

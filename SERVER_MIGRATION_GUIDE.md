@@ -67,12 +67,12 @@ The script will:
 ### 4. Verify Cron Update
 
 ```bash
-crontab -l | grep trading
+crontab -l | grep forex
 ```
 
 Should show:
 ```
-0 9 * * * cd /path/to/ForexTest && /usr/bin/python3 oanda_multi_pair_trader.py >> logs/trading.log 2>&1
+0 9 * * * /home/forex/ForexTest/run_multi_pair_trader.sh
 ```
 
 ### 5. Monitor First Run
@@ -85,10 +85,14 @@ Should show:
 
 Check logs:
 ```bash
-tail -f logs/trading.log
+tail -f /home/forex/logs/multi_trader_$(date +%Y_%m_%d).log
 ```
 
 ## What Happens to Current Positions?
+
+The bot automatically syncs with OANDA on every run, so your positions are safe regardless of local state files.
+
+**Important:** Position state files are in `data/oanda_cache/{PAIR}_state.json`, NOT the root directory!
 
 **Scenario 1: No open positions (clean migration)**
 - Bot starts fresh at 9 AM tomorrow
@@ -96,11 +100,16 @@ tail -f logs/trading.log
 - Everything just works
 
 **Scenario 2: Open positions from 5:35 PM today**
-- Positions remain open overnight
-- At 9 AM tomorrow, bot evaluates them with 9 AM model
-- If prediction says "exit", bot closes position
-- If prediction says "hold", position stays open
-- New positions opened for pairs without trades
+- Positions remain open overnight at OANDA
+- At 9 AM tomorrow, bot queries OANDA API for actual positions
+- **Time-based exit:** If position >= 1 day old, closes it (logs P&L)
+- **Then:** Generates new 9 AM predictions and enters fresh positions
+- This is normal behavior - daily rebalancing based on new predictions
+
+**The bot does NOT care about old predictions.** It always:
+1. Closes positions >= 1 day old
+2. Generates fresh predictions with new data
+3. Enters new positions based on current signals
 
 ## Expected Performance Improvement
 
@@ -128,9 +137,9 @@ for pair in EURUSD GBPUSD AUDUSD USDJPY; do
     cp model_cache_${pair}_5pm_backup.pkl model_cache_${pair}.pkl
 done
 
-# Restore old cron
-crontab -l | grep -v "oanda_multi_pair_trader.py" | crontab -
-(crontab -l; echo "35 17 * * * cd $(pwd) && /usr/bin/python3 oanda_multi_pair_trader.py >> logs/trading.log 2>&1") | crontab -
+# Restore old cron (5:35 PM EST = 30 17 in cron)
+crontab -l | grep -v "run_multi_pair_trader.sh" | crontab -
+(crontab -l; echo "30 17 * * * /home/forex/ForexTest/run_multi_pair_trader.sh") | crontab -
 ```
 
 ## Troubleshooting
@@ -150,7 +159,7 @@ python3 fetch_9am_data.py
 grep CRON /var/log/syslog
 
 # Test manual run
-cd ~/ForexTest && python3 oanda_multi_pair_trader.py
+/home/forex/ForexTest/run_multi_pair_trader.sh
 ```
 
 **Issue:** Models fail to retrain

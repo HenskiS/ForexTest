@@ -134,7 +134,19 @@ class OandaClient:
             return None
 
         # Calculate units based on position size
-        units = int(position_size_dollars / current_price)
+        # For forex pairs, units represent base currency amount
+        # EUR/USD: 1 unit = 1 EUR (~$1.05), so units = dollars / price
+        # USD/JPY: 1 unit = 1 USD ($1.00), so units = dollars directly
+        # GBP/USD: 1 unit = 1 GBP (~$1.27), so units = dollars / price
+
+        if instrument.startswith('USD_'):
+            # USD is base currency (USD/JPY, USD/CHF, USD/CAD)
+            # 1 unit = $1, so units = desired dollar exposure
+            units = int(position_size_dollars)
+        else:
+            # USD is quote currency (EUR/USD, GBP/USD, AUD/USD, NZD/USD)
+            # 1 unit = 1 base currency, so units = dollars / price
+            units = int(position_size_dollars / current_price)
 
         # Determine price precision based on instrument
         # JPY pairs use 3 decimals, others use 5
