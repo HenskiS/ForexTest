@@ -69,7 +69,7 @@ class OandaDataFetcher:
 
         raise ValueError(f"Unknown pair: {pair}. Use standard format like 'EURUSD'")
 
-    def get_historical_data(self, pair, count=756, granularity='D'):
+    def get_historical_data(self, pair, count=756, granularity='D', daily_alignment=17):
         """
         Fetch historical candle data from OANDA.
 
@@ -82,6 +82,9 @@ class OandaDataFetcher:
                 'H4' = 4 hours
                 'M15' = 15 minutes
                 etc.
+            daily_alignment: Hour (0-23 EST) when daily candles reset (default: 17 = 5 PM)
+                Use 9 for 9 AM EST alignment (better spreads)
+                Use 17 for 5 PM EST alignment (default OANDA)
 
         Returns:
             DataFrame with OHLCV data
@@ -99,6 +102,11 @@ class OandaDataFetcher:
             'granularity': granularity,
             'price': 'M',  # Midpoint prices (average of bid/ask)
         }
+
+        # Add daily alignment for daily candles
+        if granularity == 'D':
+            params['alignmentTimezone'] = 'America/New_York'
+            params['dailyAlignment'] = daily_alignment
 
         try:
             print(f"Fetching {pair} ({instrument}) data: {count} {granularity} candles...")
