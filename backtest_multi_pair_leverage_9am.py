@@ -21,11 +21,11 @@ import matplotlib.pyplot as plt
 PAIRS = ['EURUSD', 'GBPUSD', 'AUDUSD', 'USDJPY']
 TARGET = 'target_1day_return'
 TRAIN_WINDOW_SIZE = 378
-TEST_DAYS = 750  # Last 250 days
+TEST_DAYS = 4500  # Full OANDA history (~12 years)
 
 # Trading parameters (from production config)
 STOP_LOSS_PCT = 0.0018
-TAKE_PROFIT_PCT = 0.0200
+TAKE_PROFIT_PCT = 0.0300  # Updated to 3% to match current production
 TRANSACTION_COST_PCT = 0.00013
 HOLDING_PERIOD = 1
 LOWER_PCT = 48
@@ -456,6 +456,81 @@ for leverage in tqdm(LEVERAGE_LEVELS, desc="Testing leverage levels"):
 # Create results dataframe
 results_df = pd.DataFrame(results)
 
+# Calculate year-by-year performance for selected leverages
+print("\n" + "="*80)
+print("YEAR-BY-YEAR PERFORMANCE")
+print("="*80)
+
+# Get test dates from first pair
+test_dates = pair_data[PAIRS[0]]['test_dates']
+
+# Analyze yearly performance for selected leverage levels
+selected_leverages = [1.0, 2.0, 3.5, 5.0]
+for lev in selected_leverages:
+    result = next((r for r in results if r['leverage'] == lev), None)
+    if not result or result['blew_up']:
+        continue
+
+    equity_curve = np.array(result['equity_curve'])
+
+    # Create dataframe with equity and dates
+    equity_df = pd.DataFrame({
+        'equity': equity_curve[1:],  # Skip initial $1000
+        'date': test_dates
+    })
+    equity_df['year'] = equity_df['date'].dt.year
+
+    print(f"\n{lev}x Leverage:")
+    print("-" * 80)
+    print(f"{'Year':<6} {'Return':>12} {'Max DD':>12} {'End Equity':>18}")
+    print("-" * 80)
+
+    yearly_stats = []
+    for year in sorted(equity_df['year'].unique()):
+        year_data = equity_df[equity_df['year'] == year]
+        if len(year_data) == 0:
+            continue
+
+        # Get start equity
+        first_idx = equity_df[equity_df['year'] == year].index[0]
+        if first_idx == 0:
+            start_equity = 1000.0
+        else:
+            start_equity = equity_df.iloc[first_idx - 1]['equity']
+
+        end_equity = year_data['equity'].iloc[-1]
+        year_return = (end_equity - start_equity) / start_equity * 100
+
+        # Calculate max DD for the year
+        year_equity_vals = np.concatenate([[start_equity], year_data['equity'].values])
+        cummax = np.maximum.accumulate(year_equity_vals)
+        drawdowns = (year_equity_vals - cummax) / cummax * 100
+        max_dd = drawdowns.min()
+
+        yearly_stats.append({
+            'year': year,
+            'return': year_return,
+            'max_dd': max_dd,
+            'end_equity': end_equity
+        })
+
+        print(f"{year:<6} {year_return:>11.2f}% {max_dd:>11.2f}% ${end_equity:>17,.0f}")
+
+    # Summary
+    if yearly_stats:
+        avg_return = np.mean([s['return'] for s in yearly_stats])
+        median_return = np.median([s['return'] for s in yearly_stats])
+        min_return = np.min([s['return'] for s in yearly_stats])
+        max_return = np.max([s['return'] for s in yearly_stats])
+        winning_years = sum(1 for s in yearly_stats if s['return'] > 0)
+
+        print("-" * 80)
+        print(f"{'AVG':<6} {avg_return:>11.2f}%")
+        print(f"{'MEDIAN':<6} {median_return:>11.2f}%")
+        print(f"{'MIN':<6} {min_return:>11.2f}%")
+        print(f"{'MAX':<6} {max_return:>11.2f}%")
+        print(f"Winning years: {winning_years}/{len(yearly_stats)} ({winning_years/len(yearly_stats)*100:.1f}%)")
+
 print("\n" + "="*80)
 print("LEVERAGE OPTIMIZATION RESULTS")
 print("="*80)
@@ -516,6 +591,15 @@ if len(blown_up) > 0:
 # Save results
 results_df.to_csv(f'multi_pair_leverage_optimization_{TEST_DAYS}days.csv', index=False)
 print(f"\n\nResults saved to: multi_pair_leverage_optimization_{TEST_DAYS}days.csv")
+
+# Also save full results with equity curves for yearly analysis
+with open(f'backtest_results_{TEST_DAYS}days.pkl', 'wb') as f:
+    pickle.dump({
+        'results': results,
+        'test_dates': test_dates,
+        'pair_returns': pair_returns
+    }, f)
+print(f"Full results with equity curves saved to: backtest_results_{TEST_DAYS}days.pkl")
 
 # Plot results
 print("\nGenerating visualization...")
