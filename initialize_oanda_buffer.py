@@ -45,14 +45,32 @@ print("\nStep 1: Loading OANDA historical data...")
 print("-"*80)
 
 raw_file = f'data/{PAIR}_1day_oanda.csv'
-if not os.path.exists(raw_file):
-    print(f"ERROR: {raw_file} not found")
-    print("Run this command first to fetch OANDA data:")
-    print(f"  python oanda_data_fetcher.py --live")
-    sys.exit(1)
+if os.path.exists(raw_file):
+    print(f"Loading cached data from {raw_file}")
+    df_raw = pd.read_csv(raw_file)
+    df_raw['date'] = pd.to_datetime(df_raw['date'])
+else:
+    print(f"Cached data not found, fetching from OANDA...")
+    fetcher = OandaDataFetcher(practice=not args.live)
 
-df_raw = pd.read_csv(raw_file)
-df_raw['date'] = pd.to_datetime(df_raw['date'])
+    # Fetch enough data for buffer initialization (need at least TRAIN_WINDOW_SIZE + BUFFER_SIZE)
+    required_candles = TRAIN_WINDOW_SIZE + BUFFER_SIZE + 100  # Extra buffer for safety
+    print(f"Fetching {PAIR} data: {required_candles} D candles...")
+
+    df_raw = fetcher.get_historical_data(PAIR, count=required_candles, granularity='D')
+
+    if df_raw is None or df_raw.empty:
+        print(f"ERROR: Failed to fetch data for {PAIR}")
+        print("Check that:")
+        print("  - Your OANDA API key is valid")
+        print("  - Your account has access to this instrument")
+        print("  - The instrument name is correct")
+        sys.exit(1)
+
+    # Save for future use
+    os.makedirs('data', exist_ok=True)
+    df_raw.to_csv(raw_file, index=False)
+    print(f"Saved data to {raw_file}")
 
 print(f"Loaded {len(df_raw)} days of data")
 print(f"Date range: {df_raw['date'].min()} to {df_raw['date'].max()}")
@@ -320,7 +338,7 @@ else:
 print(f"Signal: {signal} ({signal_str})")
 
 print("\n" + "="*80)
-print("✓ Buffer initialized successfully!")
+print("SUCCESS: Buffer initialized successfully!")
 print("="*80)
 print(f"\nYou can now run the production trader with percentile-based signals:")
 print(f"  python oanda_production_trader.py --pair {PAIR} {'--live' if args.live else ''} --dry-run")

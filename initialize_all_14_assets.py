@@ -9,7 +9,7 @@ import sys
 # All 14 assets
 ASSETS = [
     # 4 Forex pairs
-    'EURUSD', 'GBPUSD', 'AUDUSD', 'USDJPY',
+    #'EURUSD', 'GBPUSD', 'AUDUSD', 'USDJPY',
     # 5 Metals
     'XAUUSD', 'XAGUSD', 'XPTUSD', 'XPDUSD', 'XCUUSD',
     # 5 Commodities/Indices
