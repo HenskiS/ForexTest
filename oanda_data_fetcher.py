@@ -19,6 +19,7 @@ class OandaDataFetcher:
 
     # OANDA instrument names (different from standard format)
     INSTRUMENT_MAP = {
+        # Forex pairs
         'EURUSD': 'EUR_USD',
         'GBPUSD': 'GBP_USD',
         'USDJPY': 'USD_JPY',
@@ -26,6 +27,19 @@ class OandaDataFetcher:
         'USDCAD': 'USD_CAD',
         'NZDUSD': 'NZD_USD',
         'USDCHF': 'USD_CHF',
+        'EURGBP': 'EUR_GBP',
+        # Precious metals
+        'XAUUSD': 'XAU_USD',
+        'XAGUSD': 'XAG_USD',
+        'XPTUSD': 'XPT_USD',
+        'XPDUSD': 'XPD_USD',
+        'XCUUSD': 'XCU_USD',
+        # Commodities & Indices
+        'SUGARUSD': 'SUGAR_USD',
+        'SPX500USD': 'SPX500_USD',
+        'DE30EUR': 'DE30_EUR',
+        'WTICOUSD': 'WTICO_USD',
+        'BCOUSD': 'BCO_USD',
     }
 
     def __init__(self, practice=True):
