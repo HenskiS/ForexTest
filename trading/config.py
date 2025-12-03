@@ -11,7 +11,7 @@ class TradingConfig:
 
     # Trading Parameters
     STOP_LOSS_PCT = 0.0018  # 0.18% stop loss
-    TAKE_PROFIT_PCT = 0.0200  # 2.00% take profit
+    TAKE_PROFIT_PCT = 0.0300  # 3.00% take profit (optimized for metals/commodities)
     TRANSACTION_COST_PCT = 0.0002  # 0.02% spread + commission
 
     # Model Parameters
