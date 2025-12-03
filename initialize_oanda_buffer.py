@@ -58,8 +58,9 @@ else:
     # Fetch enough data for buffer initialization (need at least TRAIN_WINDOW_SIZE + BUFFER_SIZE)
     required_candles = TRAIN_WINDOW_SIZE + BUFFER_SIZE + 300  # Extra buffer for indicator warmup
     print(f"Fetching {PAIR} data: {required_candles} D candles...")
+    print(f"Daily alignment: 9 AM EST (14:00 UTC)")
 
-    df_raw = fetcher.get_historical_data(PAIR, count=required_candles, granularity='D')
+    df_raw = fetcher.get_historical_data(PAIR, count=required_candles, granularity='D', daily_alignment=9)
 
     if df_raw is None or df_raw.empty:
         print(f"ERROR: Failed to fetch data for {PAIR}")

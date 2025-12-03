@@ -271,5 +271,6 @@ class OandaClient:
         return self.fetcher.get_historical_data(
             self.pair,
             count=count,
-            granularity='D'
+            granularity='D',
+            daily_alignment=9  # 9 AM EST (14:00 UTC) - aligns with trading schedule
         )
