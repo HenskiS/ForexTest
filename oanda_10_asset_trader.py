@@ -387,12 +387,22 @@ class MultiAssetTrader:
 
 
 if __name__ == "__main__":
+    # Default 14-asset diversified portfolio
+    DEFAULT_ASSETS = [
+        # 4 Forex pairs
+        'EURUSD', 'GBPUSD', 'AUDUSD', 'USDJPY',
+        # 5 Metals
+        'XAUUSD', 'XAGUSD', 'XPTUSD', 'XPDUSD', 'XCUUSD',
+        # 5 Commodities/Indices
+        'SUGARUSD', 'SPX500USD', 'DE30EUR', 'WTICOUSD', 'BCOUSD'
+    ]
+
     parser = argparse.ArgumentParser(description='OANDA 10-Asset Diversified Trader')
     parser.add_argument('--live', action='store_true', help='Use LIVE account (default: practice)')
     parser.add_argument('--dry-run', action='store_true', help='Simulate only, do not place trades')
     parser.add_argument('--leverage', type=float, default=2.0, help='Leverage multiplier (default: 2.0)')
-    parser.add_argument('--assets', nargs='+', default=TradingConfig.DEFAULT_10_ASSETS,
-                        help='Assets to trade (default: 10-asset diversified portfolio)')
+    parser.add_argument('--assets', nargs='+', default=DEFAULT_ASSETS,
+                        help='Assets to trade (default: 14-asset diversified portfolio)')
     parser.add_argument('--yes', action='store_true', help='Skip confirmation prompts (for automated runs)')
     args = parser.parse_args()
 
