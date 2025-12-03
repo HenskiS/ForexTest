@@ -1,8 +1,10 @@
 """
-Backtest rolling daily strategy on OANDA data.
+Backtest alternative strategy: Follow the model's daily predictions.
 
-Tests the exact production strategy (rolling daily retraining, percentile thresholds)
-on OANDA historical data to verify performance matches expectations.
+Instead of fixed holding periods and stop loss/take profit exits,
+this strategy enters when the model predicts a direction and stays
+in that position as long as the model continues predicting the same direction.
+Exits immediately when model changes prediction.
 """
 import pandas as pd
 import numpy as np
@@ -18,17 +20,22 @@ import sys
 parser = argparse.ArgumentParser()
 parser.add_argument('--pair', type=str, default='EURUSD', help='Currency pair')
 parser.add_argument('--test-days', type=int, default=250, help='Number of recent days to backtest')
-parser.add_argument('--spread-pct', type=float, default=0.0, help='Spread cost per trade as percentage (e.g., 0.03 for 3 pips on EURUSD)')
+parser.add_argument('--spread-pct', type=float, default=0.0, help='Spread cost per trade as percentage')
+parser.add_argument('--lower-pct', type=float, default=48, help='Lower percentile for short signal')
+parser.add_argument('--upper-pct', type=float, default=52, help='Upper percentile for long signal')
 args = parser.parse_args()
 
 PAIR = args.pair.upper()
 TARGET = 'target_1day_return'
-TRAIN_WINDOW_SIZE = 378  # Optimized for 1-day predictions (was 756 for 5-day)
+TRAIN_WINDOW_SIZE = 378  # Optimized for 1-day predictions
 TEST_DAYS = args.test_days
 
-print(f"Backtesting OANDA Data - {PAIR}")
+print(f"Backtesting FOLLOW MODEL Strategy - {PAIR}")
 print("="*80)
 print(f"Test period: Last {TEST_DAYS} days")
+print(f"Strategy: Enter and stay as long as model predicts same direction")
+print(f"Lower threshold: {args.lower_pct}th percentile")
+print(f"Upper threshold: {args.upper_pct}th percentile")
 print("="*80)
 
 # Load raw OANDA data and calculate features fresh
@@ -134,7 +141,6 @@ technical_features = [
 # Drop rows with missing features or targets
 df = df.dropna(subset=technical_features + [TARGET])
 print(f"Clean data: {len(df)} days ({df.index.min()} to {df.index.max()})")
-print(f"(Last day excluded - no realized next-day return yet)")
 
 # Load hyperparameters
 hyperparam_file = f'hyperparams_rolling_daily_{PAIR}.pkl'
@@ -151,7 +157,7 @@ else:
         'subsample': 0.9,
         'colsample_bytree': 0.7
     }
-    print(f"\nUsing default hyperparameters (optimized)")
+    print(f"\nUsing default hyperparameters")
 
 print(f"  {best_params}")
 
@@ -177,8 +183,8 @@ for i in tqdm(range(start_idx, len(df)), desc="Generating predictions"):
     if i < TRAIN_WINDOW_SIZE:
         continue
 
-    # Rolling 756-day window with 1-day gap (train through i-1, predict on i)
-    train_end_idx = i - 1  # Stop training 1 day before prediction
+    # Rolling window
+    train_end_idx = i - 1
     train_start_idx = train_end_idx - TRAIN_WINDOW_SIZE
     train_data = df.iloc[train_start_idx:train_end_idx]
 
@@ -217,28 +223,29 @@ test_dates = pd.DatetimeIndex(test_dates)
 print(f"\nGenerated {len(predictions)} predictions")
 print(f"Date range: {test_dates[0]} to {test_dates[-1]}")
 
-# Backtest with percentile thresholds
+# Backtest with FOLLOW MODEL strategy
 print("\n" + "="*80)
-print("BACKTESTING WITH PERCENTILE THRESHOLDS")
+print("BACKTESTING FOLLOW MODEL STRATEGY")
 print("="*80)
 
-def backtest_strategy(predictions, df_prices, test_indices,
-                      lower_pct=48, upper_pct=52,
-                      base_stop_loss_pct=0.0040,
-                      base_take_profit_pct=0.0100,
-                      loss_cooldown_days=1,
-                      transaction_cost_pct=0.0002,
-                      holding_period=5,
-                      buffer_warmup=50):
-    """Backtest with rolling prediction buffer (mimics production)."""
+def backtest_follow_model(predictions, df_prices, test_indices,
+                          lower_pct=48, upper_pct=52,
+                          transaction_cost_pct=0.0002,
+                          buffer_warmup=50):
+    """
+    Backtest strategy that follows model predictions.
+
+    Enter: When model predicts direction (above upper or below lower threshold)
+    Exit: When model changes prediction (signal changes)
+    Stay: As long as model continues predicting same direction
+    """
 
     # Initialize buffer with first buffer_warmup predictions
     prediction_buffer = list(predictions[:buffer_warmup])
 
-    position = 0
+    position = 0  # 0=no position, 1=long, -1=short
     entry_price = 0.0
     entry_date = None
-    cooldown_remaining = 0
     holding_days = 0
 
     equity = [1000]
@@ -248,15 +255,11 @@ def backtest_strategy(predictions, df_prices, test_indices,
     test_data = df_prices.iloc[test_indices]
     test_dates_array = test_data.index
     opens = test_data['open'].values
-    highs = test_data['high'].values
-    lows = test_data['low'].values
     closes = test_data['close'].values
 
     for i in range(len(predictions)):
         prediction = predictions[i]
         open_price = opens[i]
-        high_price = highs[i]
-        low_price = lows[i]
         close_price = closes[i]
 
         # Update buffer (rolling window)
@@ -271,60 +274,26 @@ def backtest_strategy(predictions, df_prices, test_indices,
             lower_threshold = np.percentile(buffer_array, lower_pct)
             upper_threshold = np.percentile(buffer_array, upper_pct)
 
-            # Generate signal
+            # Generate signal from model prediction
             if prediction >= upper_threshold:
-                signal = 1
+                signal = 1  # Long
             elif prediction <= lower_threshold:
-                signal = -1
+                signal = -1  # Short
             else:
-                signal = 0
+                signal = 0  # Hold/neutral
         else:
             signal = 0  # No signal during warmup
 
         signals_list.append(signal)
 
-        if cooldown_remaining > 0:
-            cooldown_remaining -= 1
-
-        # Fixed stops (optimized - no ATR adjustment, multiplier=0.0 performed best)
-        stop_loss_pct = base_stop_loss_pct
-        take_profit_pct = base_take_profit_pct
-
-        # Check for exit
+        # Check for exit: Exit if we have a position and signal changes
         if position != 0:
             holding_days += 1
 
-            if position == 1:
-                pct_high = (high_price - entry_price) / entry_price
-                pct_low = (low_price - entry_price) / entry_price
-            else:
-                pct_high = (entry_price - low_price) / entry_price
-                pct_low = (entry_price - high_price) / entry_price
+            # Exit if signal changes (model changed prediction)
+            if signal != position:
+                exit_price = open_price  # Exit at next day's open
 
-            exit_triggered = False
-            exit_price = None
-            exit_reason = None
-
-            if pct_low <= -stop_loss_pct:
-                exit_triggered = True
-                exit_reason = 'STOP_LOSS'
-                if position == 1:
-                    exit_price = entry_price * (1 - stop_loss_pct)
-                else:
-                    exit_price = entry_price * (1 + stop_loss_pct)
-            elif pct_high >= take_profit_pct:
-                exit_triggered = True
-                exit_reason = 'TAKE_PROFIT'
-                if position == 1:
-                    exit_price = entry_price * (1 + take_profit_pct)
-                else:
-                    exit_price = entry_price * (1 - take_profit_pct)
-            elif holding_days >= holding_period:
-                exit_triggered = True
-                exit_reason = 'TIME_EXIT'
-                exit_price = close_price
-
-            if exit_triggered:
                 if position == 1:
                     raw_return_pct = (exit_price - entry_price) / entry_price * 100
                 else:
@@ -346,22 +315,48 @@ def backtest_strategy(predictions, df_prices, test_indices,
                     'exit_price': exit_price,
                     'net_return_pct': net_return_pct,
                     'outcome': outcome,
-                    'exit_reason': exit_reason
+                    'exit_reason': 'MODEL_CHANGE',
+                    'holding_days': holding_days
                 })
-
-                if net_return_pct < 0 and loss_cooldown_days > 0:
-                    cooldown_remaining = loss_cooldown_days
 
                 position = 0
                 entry_date = None
                 holding_days = 0
 
-        # Check for entry
-        if position == 0 and signal != 0 and cooldown_remaining == 0:
+        # Check for entry: Enter if no position and model gives signal
+        if position == 0 and signal != 0:
             position = signal
             entry_price = open_price
             entry_date = test_dates_array[i]
             holding_days = 0
+
+    # Close any open position at end
+    if position != 0:
+        exit_price = closes[-1]
+
+        if position == 1:
+            raw_return_pct = (exit_price - entry_price) / entry_price * 100
+        else:
+            raw_return_pct = (entry_price - exit_price) / entry_price * 100
+
+        net_return_pct = raw_return_pct - (transaction_cost_pct * 100)
+        outcome = 'WIN' if net_return_pct > 0 else 'LOSS'
+
+        current_equity = equity[-1]
+        new_equity = current_equity * (1 + net_return_pct / 100)
+        equity.append(new_equity)
+
+        trades.append({
+            'entry_date': entry_date,
+            'exit_date': test_dates_array[-1],
+            'direction': 'LONG' if position == 1 else 'SHORT',
+            'entry_price': entry_price,
+            'exit_price': exit_price,
+            'net_return_pct': net_return_pct,
+            'outcome': outcome,
+            'exit_reason': 'END_OF_TEST',
+            'holding_days': holding_days
+        })
 
     final_equity = equity[-1]
     total_return_pct = (final_equity - 1000) / 1000 * 100
@@ -392,23 +387,21 @@ def backtest_strategy(predictions, df_prices, test_indices,
         'n_short': n_short,
         'n_hold': n_hold,
         'years': years,
-        'trades': trades_df
+        'trades': trades_df,
+        'equity': equity
     }
 
-# Run backtest (v4 optimized parameters)
-spread_cost = args.spread_pct / 100.0  # Convert from percentage to decimal
-result = backtest_strategy(predictions, df, test_indices,
-                           lower_pct=48, upper_pct=52,
-                           base_stop_loss_pct=0.0018,  # v4: 0.18% (optimized)
-                           base_take_profit_pct=0.0300,  # v4: 3.00% (optimized - improved from 2.00%)
-                           loss_cooldown_days=0,  # v4: No cooldown (optimized)
-                           transaction_cost_pct=0.0002 + spread_cost,  # Base cost + spread
-                           holding_period=1,  # v4: 1-day (optimized)
-                           buffer_warmup=50)
+# Run backtest
+spread_cost = args.spread_pct / 100.0
+result = backtest_follow_model(predictions, df, test_indices,
+                               lower_pct=args.lower_pct,
+                               upper_pct=args.upper_pct,
+                               transaction_cost_pct=0.0002 + spread_cost,
+                               buffer_warmup=50)
 
 # Display results
 print("\n" + "="*80)
-print(f"BACKTEST RESULTS - {PAIR} OANDA DATA")
+print(f"BACKTEST RESULTS - FOLLOW MODEL STRATEGY - {PAIR}")
 print("="*80)
 print(f"Test Period: {test_dates[0].date()} to {test_dates[-1].date()}")
 print(f"Trading Days: {len(predictions)}")
@@ -438,39 +431,8 @@ if len(result['trades']) > 0:
     print(f"  Avg Loss: {losses['net_return_pct'].mean():.2f}%")
     print(f"  Largest Win: {wins['net_return_pct'].max():.2f}%")
     print(f"  Largest Loss: {losses['net_return_pct'].min():.2f}%")
-
-    # Yearly breakdown
-    if 'exit_date' in trades_df.columns and len(trades_df) > 0:
-        print("\nYearly Performance Breakdown:")
-        print("-" * 80)
-
-        # Parse dates and group by year
-        trades_df['year'] = pd.to_datetime(trades_df['exit_date']).dt.year
-        yearly_stats = []
-
-        for year in sorted(trades_df['year'].unique()):
-            year_trades = trades_df[trades_df['year'] == year]
-            year_wins = year_trades[year_trades['outcome'] == 'WIN']
-            year_losses = year_trades[year_trades['outcome'] == 'LOSS']
-
-            # Calculate annual return for this year
-            year_return_pct = year_trades['net_return_pct'].sum()
-
-            yearly_stats.append({
-                'year': year,
-                'trades': len(year_trades),
-                'win_rate': len(year_wins) / len(year_trades) * 100 if len(year_trades) > 0 else 0,
-                'return_pct': year_return_pct,
-                'avg_win': year_wins['net_return_pct'].mean() if len(year_wins) > 0 else 0,
-                'avg_loss': year_losses['net_return_pct'].mean() if len(year_losses) > 0 else 0,
-                'profit_factor': abs(year_wins['net_return_pct'].sum() / year_losses['net_return_pct'].sum()) if len(year_losses) > 0 and year_losses['net_return_pct'].sum() != 0 else 0
-            })
-
-        for stats in yearly_stats:
-            print(f"{stats['year']}: {stats['return_pct']:7.2f}% return | {stats['trades']:3d} trades | "
-                  f"{stats['win_rate']:4.1f}% win rate | PF: {stats['profit_factor']:.2f}")
-
-        print("-" * 80)
+    print(f"  Avg Holding Period: {trades_df['holding_days'].mean():.1f} days")
+    print(f"  Max Holding Period: {trades_df['holding_days'].max()} days")
 
     if len(wins) > 0 and len(losses) > 0:
         profit_factor = abs(wins['net_return_pct'].sum() / losses['net_return_pct'].sum())
@@ -480,9 +442,8 @@ print("\n" + "="*80)
 print("Backtest complete!")
 print("="*80)
 
-# Save trade details to CSV for visualization
+# Save trade details to CSV
 if len(result['trades']) > 0:
-    trades_output_file = f'{PAIR}_backtest_trades_{TEST_DAYS}days.csv'
+    trades_output_file = f'{PAIR}_follow_model_trades_{TEST_DAYS}days.csv'
     result['trades'].to_csv(trades_output_file, index=False)
     print(f"\nTrade details saved to: {trades_output_file}")
-    print(f"Use plot_backtest_trades.py to visualize these trades")

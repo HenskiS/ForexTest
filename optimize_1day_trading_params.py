@@ -1,8 +1,12 @@
 """
-Backtest rolling daily strategy on OANDA data.
+Optimize trading parameters for 1-day prediction model.
 
-Tests the exact production strategy (rolling daily retraining, percentile thresholds)
-on OANDA historical data to verify performance matches expectations.
+Tests various combinations of:
+- Holding periods (1-5 days)
+- Stop loss percentages
+- Take profit percentages
+
+To find the best configuration for the 1-day forward return predictions.
 """
 import pandas as pd
 import numpy as np
@@ -13,25 +17,25 @@ import argparse
 from tqdm import tqdm
 import os
 import sys
+from itertools import product
 
 # Parse arguments
 parser = argparse.ArgumentParser()
 parser.add_argument('--pair', type=str, default='EURUSD', help='Currency pair')
 parser.add_argument('--test-days', type=int, default=250, help='Number of recent days to backtest')
-parser.add_argument('--spread-pct', type=float, default=0.0, help='Spread cost per trade as percentage (e.g., 0.03 for 3 pips on EURUSD)')
 args = parser.parse_args()
 
 PAIR = args.pair.upper()
 TARGET = 'target_1day_return'
-TRAIN_WINDOW_SIZE = 378  # Optimized for 1-day predictions (was 756 for 5-day)
+TRAIN_WINDOW_SIZE = 378  # Optimized for 1-day predictions
 TEST_DAYS = args.test_days
 
-print(f"Backtesting OANDA Data - {PAIR}")
+print(f"Optimizing Trading Parameters for 1-Day Model - {PAIR}")
 print("="*80)
 print(f"Test period: Last {TEST_DAYS} days")
 print("="*80)
 
-# Load raw OANDA data and calculate features fresh
+# Load raw OANDA data and calculate features
 data_file = f'data/{PAIR}_1day_oanda.csv'
 if not os.path.exists(data_file):
     print(f"\nERROR: {data_file} not found")
@@ -42,30 +46,24 @@ df_raw = pd.read_csv(data_file)
 df_raw['date'] = pd.to_datetime(df_raw['date'])
 df_raw = df_raw.set_index('date')
 print(f"\nLoaded {len(df_raw)} days of raw OANDA data")
-print(f"Date range: {df_raw.index.min()} to {df_raw.index.max()}")
 
-# Calculate features fresh (matching production trader)
-print("\nCalculating technical features...")
+# Calculate features (same as backtest script)
 def calculate_features(df):
-    """Calculate all technical features (same as production trader)"""
-    # Basic features
+    """Calculate all technical features"""
     df['momentum'] = df['close'].pct_change()
     df['avg_price'] = (df['open'] + df['high'] + df['low'] + df['close']) / 4
     df['range'] = df['high'] - df['low']
     df['ohlc'] = (df['open'] + df['high'] + df['low'] + df['close']) / 4
 
-    # EMAs
     for period in [10, 20, 50, 100, 200]:
         df[f'ema_{period}'] = df['close'].ewm(span=period, adjust=False).mean()
 
-    # MACD
     ema_12 = df['close'].ewm(span=12, adjust=False).mean()
     ema_26 = df['close'].ewm(span=26, adjust=False).mean()
     df['macd'] = ema_12 - ema_26
     df['macd_signal'] = df['macd'].ewm(span=9, adjust=False).mean()
     df['macd_hist'] = df['macd'] - df['macd_signal']
 
-    # ADX
     plus_dm = df['high'].diff()
     minus_dm = -df['low'].diff()
     plus_dm[plus_dm < 0] = 0
@@ -79,29 +77,24 @@ def calculate_features(df):
     df['plus_di'] = plus_di
     df['minus_di'] = minus_di
 
-    # RSI
     delta = df['close'].diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
     rs = gain / loss
     df['rsi'] = 100 - (100 / (1 + rs))
 
-    # Stochastic
     lowest_low = df['low'].rolling(window=14).min()
     highest_high = df['high'].rolling(window=14).max()
     df['stoch_k'] = 100 * ((df['close'] - lowest_low) / (highest_high - lowest_low))
     df['stoch_d'] = df['stoch_k'].rolling(window=3).mean()
 
-    # CCI
     tp = (df['high'] + df['low'] + df['close']) / 3
     sma = tp.rolling(window=20).mean()
     mad = tp.rolling(window=20).apply(lambda x: np.abs(x - x.mean()).mean())
     df['cci'] = (tp - sma) / (0.015 * mad)
 
-    # Williams %R
     df['williams_r'] = -100 * ((highest_high - df['close']) / (highest_high - lowest_low))
 
-    # Bollinger Bands
     middle = df['close'].rolling(window=20).mean()
     std = df['close'].rolling(window=20).std()
     df['bb_upper'] = middle + (std * 2)
@@ -110,17 +103,16 @@ def calculate_features(df):
     df['bb_width'] = df['bb_upper'] - df['bb_lower']
     df['bb_position'] = (df['close'] - df['bb_lower']) / (df['bb_upper'] - df['bb_lower'])
 
-    # ATR
     df['atr'] = atr
 
     return df
 
+print("\nCalculating technical features...")
 df = calculate_features(df_raw.copy())
 
-# Calculate target (1-day forward return)
+# Calculate target
 df[TARGET] = df['close'].pct_change(1).shift(-1)
 
-# Define feature list for subsetting
 technical_features = [
     'momentum', 'avg_price', 'range', 'ohlc',
     'ema_10', 'ema_20', 'ema_50', 'ema_100', 'ema_200',
@@ -131,10 +123,8 @@ technical_features = [
     'atr'
 ]
 
-# Drop rows with missing features or targets
 df = df.dropna(subset=technical_features + [TARGET])
-print(f"Clean data: {len(df)} days ({df.index.min()} to {df.index.max()})")
-print(f"(Last day excluded - no realized next-day return yet)")
+print(f"Clean data: {len(df)} days")
 
 # Load hyperparameters
 hyperparam_file = f'hyperparams_rolling_daily_{PAIR}.pkl'
@@ -151,17 +141,13 @@ else:
         'subsample': 0.9,
         'colsample_bytree': 0.7
     }
-    print(f"\nUsing default hyperparameters (optimized)")
-
-print(f"  {best_params}")
+    print(f"\nUsing default hyperparameters")
 
 # Generate predictions for test period
 print(f"\nGenerating predictions for last {TEST_DAYS} days...")
-print("-"*80)
 
 if len(df) < TRAIN_WINDOW_SIZE + TEST_DAYS:
     print(f"ERROR: Need at least {TRAIN_WINDOW_SIZE + TEST_DAYS} days")
-    print(f"Have: {len(df)} days")
     sys.exit(1)
 
 predictions = []
@@ -177,17 +163,15 @@ for i in tqdm(range(start_idx, len(df)), desc="Generating predictions"):
     if i < TRAIN_WINDOW_SIZE:
         continue
 
-    # Rolling 756-day window with 1-day gap (train through i-1, predict on i)
-    train_end_idx = i - 1  # Stop training 1 day before prediction
+    # Rolling window with 1-day gap
+    train_end_idx = i - 1
     train_start_idx = train_end_idx - TRAIN_WINDOW_SIZE
     train_data = df.iloc[train_start_idx:train_end_idx]
 
-    # Prepare data
     scaler = MinMaxScaler()
     X_train = scaler.fit_transform(train_data[technical_features])
     y_train = train_data[TARGET].values
 
-    # Train model
     model = xgb.XGBRegressor(
         n_estimators=best_params['n_estimators'],
         learning_rate=best_params['learning_rate'],
@@ -200,7 +184,6 @@ for i in tqdm(range(start_idx, len(df)), desc="Generating predictions"):
 
     model.fit(X_train, y_train, verbose=False)
 
-    # Predict
     X_today = scaler.transform(df.iloc[[i]][technical_features])
     y_pred = model.predict(X_today)[0]
     y_actual = df.iloc[i][TARGET]
@@ -215,12 +198,19 @@ actuals = np.array(actuals)
 test_dates = pd.DatetimeIndex(test_dates)
 
 print(f"\nGenerated {len(predictions)} predictions")
-print(f"Date range: {test_dates[0]} to {test_dates[-1]}")
 
-# Backtest with percentile thresholds
+# Define parameter grid to search - fine-tuned around optimal zone
+param_grid = {
+    'holding_period': [1],  # Already confirmed optimal
+    'base_stop_loss_pct': [0.0015, 0.0018, 0.0020, 0.0022, 0.0025],  # 0.15%, 0.18%, 0.20%, 0.22%, 0.25%
+    'base_take_profit_pct': [0.0125, 0.0150, 0.0175, 0.0200, 0.0225]  # 1.25%, 1.50%, 1.75%, 2.00%, 2.25%
+}
+
 print("\n" + "="*80)
-print("BACKTESTING WITH PERCENTILE THRESHOLDS")
+print("PARAMETER OPTIMIZATION")
 print("="*80)
+print(f"Testing {len(param_grid['holding_period']) * len(param_grid['base_stop_loss_pct']) * len(param_grid['base_take_profit_pct'])} combinations...")
+print()
 
 def backtest_strategy(predictions, df_prices, test_indices,
                       lower_pct=48, upper_pct=52,
@@ -230,9 +220,8 @@ def backtest_strategy(predictions, df_prices, test_indices,
                       transaction_cost_pct=0.0002,
                       holding_period=5,
                       buffer_warmup=50):
-    """Backtest with rolling prediction buffer (mimics production)."""
+    """Backtest with given parameters"""
 
-    # Initialize buffer with first buffer_warmup predictions
     prediction_buffer = list(predictions[:buffer_warmup])
 
     position = 0
@@ -243,7 +232,6 @@ def backtest_strategy(predictions, df_prices, test_indices,
 
     equity = [1000]
     trades = []
-    signals_list = []
 
     test_data = df_prices.iloc[test_indices]
     test_dates_array = test_data.index
@@ -259,19 +247,16 @@ def backtest_strategy(predictions, df_prices, test_indices,
         low_price = lows[i]
         close_price = closes[i]
 
-        # Update buffer (rolling window)
         if i >= buffer_warmup:
             prediction_buffer.append(prediction)
             if len(prediction_buffer) > 200:
                 prediction_buffer = prediction_buffer[-200:]
 
-        # Calculate thresholds from buffer
         if len(prediction_buffer) >= buffer_warmup:
             buffer_array = np.array(prediction_buffer)
             lower_threshold = np.percentile(buffer_array, lower_pct)
             upper_threshold = np.percentile(buffer_array, upper_pct)
 
-            # Generate signal
             if prediction >= upper_threshold:
                 signal = 1
             elif prediction <= lower_threshold:
@@ -279,14 +264,12 @@ def backtest_strategy(predictions, df_prices, test_indices,
             else:
                 signal = 0
         else:
-            signal = 0  # No signal during warmup
-
-        signals_list.append(signal)
+            signal = 0
 
         if cooldown_remaining > 0:
             cooldown_remaining -= 1
 
-        # Fixed stops (optimized - no ATR adjustment, multiplier=0.0 performed best)
+        # Fixed stops (no ATR adjustment)
         stop_loss_pct = base_stop_loss_pct
         take_profit_pct = base_take_profit_pct
 
@@ -303,25 +286,21 @@ def backtest_strategy(predictions, df_prices, test_indices,
 
             exit_triggered = False
             exit_price = None
-            exit_reason = None
 
             if pct_low <= -stop_loss_pct:
                 exit_triggered = True
-                exit_reason = 'STOP_LOSS'
                 if position == 1:
                     exit_price = entry_price * (1 - stop_loss_pct)
                 else:
                     exit_price = entry_price * (1 + stop_loss_pct)
             elif pct_high >= take_profit_pct:
                 exit_triggered = True
-                exit_reason = 'TAKE_PROFIT'
                 if position == 1:
                     exit_price = entry_price * (1 + take_profit_pct)
                 else:
                     exit_price = entry_price * (1 - take_profit_pct)
             elif holding_days >= holding_period:
                 exit_triggered = True
-                exit_reason = 'TIME_EXIT'
                 exit_price = close_price
 
             if exit_triggered:
@@ -337,7 +316,6 @@ def backtest_strategy(predictions, df_prices, test_indices,
                 new_equity = current_equity * (1 + net_return_pct / 100)
                 equity.append(new_equity)
 
-                # Store detailed trade info
                 trades.append({
                     'entry_date': entry_date,
                     'exit_date': test_dates_array[i],
@@ -345,8 +323,7 @@ def backtest_strategy(predictions, df_prices, test_indices,
                     'entry_price': entry_price,
                     'exit_price': exit_price,
                     'net_return_pct': net_return_pct,
-                    'outcome': outcome,
-                    'exit_reason': exit_reason
+                    'outcome': outcome
                 })
 
                 if net_return_pct < 0 and loss_cooldown_days > 0:
@@ -369,120 +346,106 @@ def backtest_strategy(predictions, df_prices, test_indices,
     trades_df = pd.DataFrame(trades)
     win_rate = len(trades_df[trades_df['outcome'] == 'WIN']) / len(trades_df) * 100 if len(trades_df) > 0 else 0
 
-    signals_array = np.array(signals_list)
-    n_long = np.sum(signals_array == 1)
-    n_short = np.sum(signals_array == -1)
-    n_hold = np.sum(signals_array == 0)
-
-    # Calculate annual return
-    years = len(predictions) / 252  # Approximate trading days per year
-    if years > 0:
-        annual_return = (final_equity / 1000) ** (1 / years) - 1
-        annual_return_pct = annual_return * 100
+    # Calculate Sharpe ratio (approximate)
+    if len(equity) > 1:
+        returns = np.diff(equity) / equity[:-1]
+        sharpe = np.mean(returns) / np.std(returns) * np.sqrt(252) if np.std(returns) > 0 else 0
     else:
-        annual_return_pct = 0
+        sharpe = 0
+
+    # Calculate max drawdown
+    equity_array = np.array(equity)
+    running_max = np.maximum.accumulate(equity_array)
+    drawdown = (equity_array - running_max) / running_max
+    max_drawdown = np.min(drawdown) * 100
 
     return {
         'final_equity': final_equity,
         'total_return_pct': total_return_pct,
-        'annual_return_pct': annual_return_pct,
         'total_trades': len(trades),
         'win_rate': win_rate,
-        'n_long': n_long,
-        'n_short': n_short,
-        'n_hold': n_hold,
-        'years': years,
+        'sharpe': sharpe,
+        'max_drawdown': max_drawdown,
         'trades': trades_df
     }
 
-# Run backtest (v4 optimized parameters)
-spread_cost = args.spread_pct / 100.0  # Convert from percentage to decimal
-result = backtest_strategy(predictions, df, test_indices,
-                           lower_pct=48, upper_pct=52,
-                           base_stop_loss_pct=0.0018,  # v4: 0.18% (optimized)
-                           base_take_profit_pct=0.0300,  # v4: 3.00% (optimized - improved from 2.00%)
-                           loss_cooldown_days=0,  # v4: No cooldown (optimized)
-                           transaction_cost_pct=0.0002 + spread_cost,  # Base cost + spread
-                           holding_period=1,  # v4: 1-day (optimized)
-                           buffer_warmup=50)
+# Run grid search
+results = []
 
-# Display results
+combinations = list(product(
+    param_grid['holding_period'],
+    param_grid['base_stop_loss_pct'],
+    param_grid['base_take_profit_pct']
+))
+
+for holding_period, stop_loss, take_profit in tqdm(combinations, desc="Testing combinations"):
+    result = backtest_strategy(
+        predictions, df, test_indices,
+        lower_pct=48, upper_pct=52,
+        base_stop_loss_pct=stop_loss,
+        base_take_profit_pct=take_profit,
+        loss_cooldown_days=1,
+        transaction_cost_pct=0.0002,
+        holding_period=holding_period,
+        buffer_warmup=50
+    )
+
+    results.append({
+        'holding_period': holding_period,
+        'stop_loss_pct': stop_loss * 100,
+        'take_profit_pct': take_profit * 100,
+        'total_return': result['total_return_pct'],
+        'total_trades': result['total_trades'],
+        'win_rate': result['win_rate'],
+        'sharpe': result['sharpe'],
+        'max_drawdown': result['max_drawdown'],
+        'final_equity': result['final_equity']
+    })
+
+# Convert to DataFrame and sort
+results_df = pd.DataFrame(results)
+results_df = results_df.sort_values('total_return', ascending=False)
+
+# Display top 20 results
 print("\n" + "="*80)
-print(f"BACKTEST RESULTS - {PAIR} OANDA DATA")
+print(f"TOP 20 PARAMETER COMBINATIONS - {PAIR}")
 print("="*80)
-print(f"Test Period: {test_dates[0].date()} to {test_dates[-1].date()}")
-print(f"Trading Days: {len(predictions)}")
-print(f"Years: {result['years']:.2f}")
-print()
-print(f"Final Equity: ${result['final_equity']:,.2f}")
-print(f"Total Return: {result['total_return_pct']:.2f}%")
-print(f"Annual Return: {result['annual_return_pct']:.2f}%")
-print()
-print(f"Total Trades: {result['total_trades']}")
-print(f"Win Rate: {result['win_rate']:.1f}%")
-print()
-print(f"Signal Distribution:")
-print(f"  Long: {result['n_long']} ({result['n_long']/len(predictions)*100:.1f}%)")
-print(f"  Short: {result['n_short']} ({result['n_short']/len(predictions)*100:.1f}%)")
-print(f"  Hold: {result['n_hold']} ({result['n_hold']/len(predictions)*100:.1f}%)")
-print()
+print(results_df.head(20).to_string(index=False))
 
-# Trade statistics
-if len(result['trades']) > 0:
-    trades_df = result['trades']
-    wins = trades_df[trades_df['outcome'] == 'WIN']
-    losses = trades_df[trades_df['outcome'] == 'LOSS']
-
-    print("Trade Statistics:")
-    print(f"  Avg Win: {wins['net_return_pct'].mean():.2f}%")
-    print(f"  Avg Loss: {losses['net_return_pct'].mean():.2f}%")
-    print(f"  Largest Win: {wins['net_return_pct'].max():.2f}%")
-    print(f"  Largest Loss: {losses['net_return_pct'].min():.2f}%")
-
-    # Yearly breakdown
-    if 'exit_date' in trades_df.columns and len(trades_df) > 0:
-        print("\nYearly Performance Breakdown:")
-        print("-" * 80)
-
-        # Parse dates and group by year
-        trades_df['year'] = pd.to_datetime(trades_df['exit_date']).dt.year
-        yearly_stats = []
-
-        for year in sorted(trades_df['year'].unique()):
-            year_trades = trades_df[trades_df['year'] == year]
-            year_wins = year_trades[year_trades['outcome'] == 'WIN']
-            year_losses = year_trades[year_trades['outcome'] == 'LOSS']
-
-            # Calculate annual return for this year
-            year_return_pct = year_trades['net_return_pct'].sum()
-
-            yearly_stats.append({
-                'year': year,
-                'trades': len(year_trades),
-                'win_rate': len(year_wins) / len(year_trades) * 100 if len(year_trades) > 0 else 0,
-                'return_pct': year_return_pct,
-                'avg_win': year_wins['net_return_pct'].mean() if len(year_wins) > 0 else 0,
-                'avg_loss': year_losses['net_return_pct'].mean() if len(year_losses) > 0 else 0,
-                'profit_factor': abs(year_wins['net_return_pct'].sum() / year_losses['net_return_pct'].sum()) if len(year_losses) > 0 and year_losses['net_return_pct'].sum() != 0 else 0
-            })
-
-        for stats in yearly_stats:
-            print(f"{stats['year']}: {stats['return_pct']:7.2f}% return | {stats['trades']:3d} trades | "
-                  f"{stats['win_rate']:4.1f}% win rate | PF: {stats['profit_factor']:.2f}")
-
-        print("-" * 80)
-
-    if len(wins) > 0 and len(losses) > 0:
-        profit_factor = abs(wins['net_return_pct'].sum() / losses['net_return_pct'].sum())
-        print(f"  Profit Factor: {profit_factor:.2f}")
-
+# Display best by different metrics
 print("\n" + "="*80)
-print("Backtest complete!")
+print("BEST BY DIFFERENT METRICS")
 print("="*80)
 
-# Save trade details to CSV for visualization
-if len(result['trades']) > 0:
-    trades_output_file = f'{PAIR}_backtest_trades_{TEST_DAYS}days.csv'
-    result['trades'].to_csv(trades_output_file, index=False)
-    print(f"\nTrade details saved to: {trades_output_file}")
-    print(f"Use plot_backtest_trades.py to visualize these trades")
+best_return = results_df.iloc[0]
+print(f"\nBest Total Return: {best_return['total_return']:.2f}%")
+print(f"  Holding Period: {best_return['holding_period']} days")
+print(f"  Stop Loss: {best_return['stop_loss_pct']:.2f}%")
+print(f"  Take Profit: {best_return['take_profit_pct']:.2f}%")
+print(f"  Win Rate: {best_return['win_rate']:.1f}%")
+print(f"  Trades: {best_return['total_trades']}")
+print(f"  Sharpe: {best_return['sharpe']:.2f}")
+print(f"  Max Drawdown: {best_return['max_drawdown']:.2f}%")
+
+best_sharpe = results_df.sort_values('sharpe', ascending=False).iloc[0]
+print(f"\nBest Sharpe Ratio: {best_sharpe['sharpe']:.2f}")
+print(f"  Holding Period: {best_sharpe['holding_period']} days")
+print(f"  Stop Loss: {best_sharpe['stop_loss_pct']:.2f}%")
+print(f"  Take Profit: {best_sharpe['take_profit_pct']:.2f}%")
+print(f"  Total Return: {best_sharpe['total_return']:.2f}%")
+print(f"  Win Rate: {best_sharpe['win_rate']:.1f}%")
+
+best_winrate = results_df.sort_values('win_rate', ascending=False).iloc[0]
+print(f"\nBest Win Rate: {best_winrate['win_rate']:.1f}%")
+print(f"  Holding Period: {best_winrate['holding_period']} days")
+print(f"  Stop Loss: {best_winrate['stop_loss_pct']:.2f}%")
+print(f"  Take Profit: {best_winrate['take_profit_pct']:.2f}%")
+print(f"  Total Return: {best_winrate['total_return']:.2f}%")
+print(f"  Sharpe: {best_winrate['sharpe']:.2f}")
+
+# Save results
+output_file = f'{PAIR}_1day_param_optimization_{TEST_DAYS}days.csv'
+results_df.to_csv(output_file, index=False)
+print(f"\n" + "="*80)
+print(f"All results saved to: {output_file}")
+print("="*80)

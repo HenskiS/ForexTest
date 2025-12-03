@@ -6,6 +6,7 @@ __pycache__/
 .env
 results
 QQQ
+*.csv
 # Jupyter
 .ipynb_checkpoints/
 

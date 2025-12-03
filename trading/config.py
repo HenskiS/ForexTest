@@ -49,8 +49,16 @@ class TradingConfig:
 
     # Multi-Pair Strategy Parameters
     DEFAULT_PAIRS = ['EURUSD', 'GBPUSD', 'AUDUSD', 'USDJPY']
-    LEVERAGE = 2.0  # 2:1 leverage for multi-pair strategy
-    CAPITAL_PER_PAIR_PCT = 0.25  # 25% capital allocation per pair
+
+    # 10-Asset Diversified Portfolio (4 Forex + 6 Commodities/Indices)
+    DEFAULT_10_ASSETS = [
+        'EURUSD', 'GBPUSD', 'AUDUSD', 'USDJPY',  # Forex (61% annual)
+        'XAUUSD', 'XAGUSD', 'XPTUSD', 'XPDUSD', 'XCUUSD',  # Metals (115-355% annual)
+        'SUGARUSD', 'SPX500USD', 'DE30EUR', 'WTICOUSD', 'BCOUSD'  # Commodities/Indices (70-220% annual)
+    ]
+
+    LEVERAGE = 2.0  # 2:1 leverage for multi-asset strategy
+    CAPITAL_PER_PAIR_PCT = 0.10  # 10% capital allocation per asset (10 assets)
 
     # File Paths
     STATE_FILE_TEMPLATE = 'position_state_{pair}.pkl'
