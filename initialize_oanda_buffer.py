@@ -18,25 +18,27 @@ import argparse
 from tqdm import tqdm
 import os
 import sys
-from datetime import datetime, timedelta
 from oanda_data_fetcher import OandaDataFetcher
 from trading.config import TradingConfig
+from trading.market_utils import calculate_technical_features
 
 # Parse arguments
 parser = argparse.ArgumentParser()
-parser.add_argument('--pair', type=str, default='EURUSD', help='Currency pair')
+parser.add_argument('--pair', type=str, default='EURUSD', help='Asset to initialize')
 parser.add_argument('--live', action='store_true', help='Use LIVE account for OANDA data')
-parser.add_argument('--buffer-days', type=int, default=200, help='Number of days to generate predictions for')
+parser.add_argument('--buffer-days', type=int, default=TradingConfig.PREDICTION_BUFFER_SIZE,
+                    help='Number of days to generate predictions for')
 args = parser.parse_args()
 
 PAIR = args.pair.upper()
-TARGET = 'target_5day_return'
-TRAIN_WINDOW_SIZE = 756  # 600 train + 156 val
+TARGET = 'target_1day_return'  # Production uses 1-day forward return
+TRAIN_WINDOW_SIZE = TradingConfig.TRAIN_WINDOW_SIZE  # 378 days
 BUFFER_SIZE = args.buffer_days
 
 print(f"Initializing Prediction Buffer with OANDA Data - {PAIR}")
 print("="*80)
 print(f"Fetching from: {'LIVE' if args.live else 'PRACTICE'} account")
+print(f"Training window: {TRAIN_WINDOW_SIZE} days")
 print(f"Buffer size: {BUFFER_SIZE} days")
 print("="*80)
 
@@ -54,7 +56,7 @@ else:
     fetcher = OandaDataFetcher(practice=not args.live)
 
     # Fetch enough data for buffer initialization (need at least TRAIN_WINDOW_SIZE + BUFFER_SIZE)
-    required_candles = TRAIN_WINDOW_SIZE + BUFFER_SIZE + 100  # Extra buffer for safety
+    required_candles = TRAIN_WINDOW_SIZE + BUFFER_SIZE + 300  # Extra buffer for indicator warmup
     print(f"Fetching {PAIR} data: {required_candles} D candles...")
 
     df_raw = fetcher.get_historical_data(PAIR, count=required_candles, granularity='D')
@@ -75,117 +77,22 @@ else:
 print(f"Loaded {len(df_raw)} days of data")
 print(f"Date range: {df_raw['date'].min()} to {df_raw['date'].max()}")
 
-# Step 2: Calculate technical features
+# Step 2: Calculate technical features using production code
 print("\nStep 2: Calculating technical features...")
 print("-"*80)
 
 df = df_raw.copy()
 df = df.set_index('date')
 
-# Basic features
-df['momentum'] = df['close'].pct_change()
-df['avg_price'] = (df['open'] + df['high'] + df['low'] + df['close']) / 4
-df['range'] = df['high'] - df['low']
-df['ohlc'] = (df['open'] + df['high'] + df['low'] + df['close']) / 4
+# Use production feature calculation
+df_with_features = calculate_technical_features(df)
 
-# EMAs
-for period in [10, 20, 50, 100, 200]:
-    df[f'ema_{period}'] = df['close'].ewm(span=period, adjust=False).mean()
+# Calculate target (1-day forward return) - same as production
+df_with_features[TARGET] = df_with_features['close'].pct_change(1).shift(-1)
 
-# MACD
-ema_12 = df['close'].ewm(span=12, adjust=False).mean()
-ema_26 = df['close'].ewm(span=26, adjust=False).mean()
-df['macd'] = ema_12 - ema_26
-df['macd_signal'] = df['macd'].ewm(span=9, adjust=False).mean()
-df['macd_hist'] = df['macd'] - df['macd_signal']
+# Clean data - drop rows with NaN in features
+df_clean = df_with_features.dropna(subset=TradingConfig.TECHNICAL_FEATURES + [TARGET])
 
-# ADX
-def calculate_adx(high, low, close, period=14):
-    plus_dm = high.diff()
-    minus_dm = -low.diff()
-    plus_dm[plus_dm < 0] = 0
-    minus_dm[minus_dm < 0] = 0
-    tr = pd.concat([high - low, abs(high - close.shift()), abs(low - close.shift())], axis=1).max(axis=1)
-    atr = tr.rolling(window=period).mean()
-    plus_di = 100 * (plus_dm.rolling(window=period).mean() / atr)
-    minus_di = 100 * (minus_dm.rolling(window=period).mean() / atr)
-    dx = (abs(plus_di - minus_di) / (plus_di + minus_di)) * 100
-    adx = dx.rolling(window=period).mean()
-    return adx, plus_di, minus_di
-
-df['adx'], df['plus_di'], df['minus_di'] = calculate_adx(df['high'], df['low'], df['close'])
-
-# RSI
-def calculate_rsi(prices, period=14):
-    delta = prices.diff()
-    gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
-    rs = gain / loss
-    return 100 - (100 / (1 + rs))
-
-df['rsi'] = calculate_rsi(df['close'])
-
-# Stochastic
-def calculate_stochastic(high, low, close, k_period=14, d_period=3):
-    lowest_low = low.rolling(window=k_period).min()
-    highest_high = high.rolling(window=k_period).max()
-    k = 100 * ((close - lowest_low) / (highest_high - lowest_low))
-    d = k.rolling(window=d_period).mean()
-    return k, d
-
-df['stoch_k'], df['stoch_d'] = calculate_stochastic(df['high'], df['low'], df['close'])
-
-# CCI
-def calculate_cci(high, low, close, period=20):
-    tp = (high + low + close) / 3
-    sma = tp.rolling(window=period).mean()
-    mad = tp.rolling(window=period).apply(lambda x: np.abs(x - x.mean()).mean())
-    return (tp - sma) / (0.015 * mad)
-
-df['cci'] = calculate_cci(df['high'], df['low'], df['close'])
-
-# Williams %R
-def calculate_williams_r(high, low, close, period=14):
-    highest_high = high.rolling(window=period).max()
-    lowest_low = low.rolling(window=period).min()
-    return -100 * ((highest_high - close) / (highest_high - lowest_low))
-
-df['williams_r'] = calculate_williams_r(df['high'], df['low'], df['close'])
-
-# Bollinger Bands
-def calculate_bollinger_bands(close, period=20, std_dev=2):
-    middle = close.rolling(window=period).mean()
-    std = close.rolling(window=period).std()
-    upper = middle + (std * std_dev)
-    lower = middle - (std * std_dev)
-    width = upper - lower
-    position = (close - lower) / (upper - lower)
-    return upper, middle, lower, width, position
-
-df['bb_upper'], df['bb_middle'], df['bb_lower'], df['bb_width'], df['bb_position'] = \
-    calculate_bollinger_bands(df['close'])
-
-# ATR
-def calculate_atr(high, low, close, period=14):
-    tr = pd.concat([high - low, abs(high - close.shift()), abs(low - close.shift())], axis=1).max(axis=1)
-    return tr.rolling(window=period).mean()
-
-df['atr'] = calculate_atr(df['high'], df['low'], df['close'])
-
-# Target (5-day forward return)
-df[TARGET] = df['close'].pct_change(5).shift(-5)
-
-technical_features = [
-    'momentum', 'avg_price', 'range', 'ohlc',
-    'ema_10', 'ema_20', 'ema_50', 'ema_100', 'ema_200',
-    'macd', 'macd_signal', 'macd_hist',
-    'adx', 'plus_di', 'minus_di',
-    'rsi', 'stoch_k', 'stoch_d', 'cci', 'williams_r',
-    'bb_upper', 'bb_middle', 'bb_lower', 'bb_width', 'bb_position',
-    'atr'
-]
-
-df_clean = df.dropna(subset=technical_features + [TARGET])
 print(f"Clean data: {len(df_clean)} days ({df_clean.index.min()} to {df_clean.index.max()})")
 
 # Save engineered data
@@ -234,31 +141,22 @@ for i in tqdm(range(start_idx, len(df_clean)), desc="Generating predictions"):
     if i < TRAIN_WINDOW_SIZE:
         continue
 
-    # Get rolling 756-day window ending just before current day
+    # Get rolling TRAIN_WINDOW_SIZE-day window ending just before current day
     train_end_idx = i
     train_start_idx = train_end_idx - TRAIN_WINDOW_SIZE
     train_data = df_clean.iloc[train_start_idx:train_end_idx]
 
     # Prepare training data
     scaler = MinMaxScaler()
-    X_train = scaler.fit_transform(train_data[technical_features])
+    X_train = scaler.fit_transform(train_data[TradingConfig.TECHNICAL_FEATURES])
     y_train = train_data[TARGET].values
 
     # Train model
-    model = xgb.XGBRegressor(
-        n_estimators=best_params['n_estimators'],
-        learning_rate=best_params['learning_rate'],
-        max_depth=best_params['max_depth'],
-        gamma=best_params['gamma'],
-        objective='reg:squarederror',
-        random_state=42,
-        n_jobs=-1
-    )
-
+    model = xgb.XGBRegressor(**best_params)
     model.fit(X_train, y_train, verbose=False)
 
     # Make prediction for today
-    X_today = scaler.transform(df_clean.iloc[[i]][technical_features])
+    X_today = scaler.transform(df_clean.iloc[[i]][TradingConfig.TECHNICAL_FEATURES])
     y_pred = model.predict(X_today)[0]
     y_actual = df_clean.iloc[i][TARGET]
 
@@ -292,11 +190,16 @@ actuals_array = np.array(actual_returns)
 print(f"Prediction range: {predictions_array.min():.6f} to {predictions_array.max():.6f}")
 print(f"Prediction mean: {predictions_array.mean():.6f}")
 print(f"Prediction std: {predictions_array.std():.6f}")
-print(f"Correlation with actual returns: {np.corrcoef(predictions_array, actuals_array)[0,1]:.4f}")
+
+# Only calculate correlation if we have valid actuals (not NaN)
+valid_mask = ~np.isnan(actuals_array)
+if valid_mask.sum() > 0:
+    corr = np.corrcoef(predictions_array[valid_mask], actuals_array[valid_mask])[0,1]
+    print(f"Correlation with actual returns: {corr:.4f}")
 
 # Calculate percentile thresholds
-lower_pct = 48
-upper_pct = 52
+lower_pct = TradingConfig.PERCENTILE_LOWER
+upper_pct = TradingConfig.PERCENTILE_UPPER
 lower_threshold = np.percentile(predictions_array, lower_pct)
 upper_threshold = np.percentile(predictions_array, upper_pct)
 
@@ -340,6 +243,6 @@ print(f"Signal: {signal} ({signal_str})")
 print("\n" + "="*80)
 print("SUCCESS: Buffer initialized successfully!")
 print("="*80)
-print(f"\nYou can now run the production trader with percentile-based signals:")
-print(f"  python oanda_production_trader.py --pair {PAIR} {'--live' if args.live else ''} --dry-run")
+print(f"\nYou can now run the production trader:")
+print(f"  venv/Scripts/python.exe oanda_14_asset_trader.py --live --dry-run --yes")
 print()
