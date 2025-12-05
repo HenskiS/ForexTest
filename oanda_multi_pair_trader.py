@@ -74,19 +74,87 @@ class MultiPairTrader:
 
         for pair in self.pairs:
             pm = self.position_managers[pair]
-            if pm.has_position() and not self.dry_run:
-                actual_position = self.clients[pair].get_open_positions()
-                if not actual_position:
-                    print(f"\n{pair}: State shows open position, but none at OANDA")
-                    print(f"  Clearing local state (position likely closed by stop/TP)")
-                    pm.close_position()
-                else:
-                    print(f"{pair}: Position synced (open)")
-            else:
+
+            if self.dry_run:
+                # In dry-run mode, just report local state
                 if pm.has_position():
                     print(f"{pair}: Has open position (dry-run mode)")
                 else:
-                    print(f"{pair}: No open position")
+                    print(f"{pair}: No open position (dry-run mode)")
+                continue
+
+            # Always check OANDA for actual positions (not just when local state says we have one)
+            actual_position = self.clients[pair].get_open_positions()
+            local_has_position = pm.has_position()
+
+            if local_has_position and not actual_position:
+                # Case 1: Local says open, OANDA says closed (stop/TP hit)
+                print(f"\n{pair}: State shows open position, but none at OANDA")
+                print(f"  Clearing local state (position likely closed by stop/TP)")
+                pm.close_position()
+
+            elif not local_has_position and actual_position:
+                # Case 2: Local says closed, OANDA says open (state desync - this was the bug!)
+                print(f"\n{pair}: OANDA shows open position, but local state shows none!")
+                print(f"  Position at OANDA: {actual_position}")
+                print(f"  Syncing local state to match OANDA...")
+
+                # Extract position info from OANDA
+                # actual_position has keys: 'long_units', 'short_units', 'unrealized_pl'
+                if actual_position.get('long_units', 0) > 0:
+                    direction = 1
+                    units = actual_position['long_units']
+                elif actual_position.get('short_units', 0) < 0:
+                    direction = -1
+                    units = abs(actual_position['short_units'])
+                else:
+                    print(f"  WARNING: Could not determine position direction, skipping sync")
+                    continue
+
+                # Get trade details (entry price, entry time) from OANDA
+                trades = self.clients[pair].get_open_trades()
+                if trades and len(trades) > 0:
+                    # Use the first trade (there should only be one per instrument in our strategy)
+                    trade = trades[0]
+                    entry_price = trade['price']
+                    entry_time = datetime.fromisoformat(trade['openTime'].replace('Z', '+00:00'))
+
+                    # Calculate position size based on units and entry price
+                    # For USD pairs (USD_JPY), units = dollars
+                    # For other pairs (EUR_USD, GBP_USD, AUD_USD), units * price = dollars
+                    instrument = self.clients[pair].fetcher.get_instrument_name(pair)
+                    if instrument.startswith('USD_'):
+                        position_size = units
+                    else:
+                        position_size = units * entry_price
+
+                    # Update local state
+                    pm.open_position(
+                        direction=direction,
+                        entry_price=entry_price,
+                        position_size=position_size,
+                        trade_id=trade['id']
+                    )
+
+                    # Override entry_date with actual time from OANDA
+                    pm.entry_date = entry_time
+                    pm.save_state()
+
+                    print(f"  Successfully synced: {'LONG' if direction == 1 else 'SHORT'} @ {entry_price:.5f}")
+                    print(f"  Entry time: {entry_time}")
+                    print(f"  Position size: ${position_size:.2f}")
+                    print(f"  Unrealized P&L: ${actual_position['unrealized_pl']:.2f}")
+                else:
+                    print(f"  ERROR: Could not fetch trade details from OANDA")
+                    print(f"  Position exists but cannot fully sync - will prevent duplicate trades")
+
+            elif local_has_position and actual_position:
+                # Case 3: Both agree there's a position
+                print(f"{pair}: Position synced (open)")
+
+            else:
+                # Case 4: Both agree there's no position
+                print(f"{pair}: No open position")
 
     def process_pair_exits(self):
         """Check and exit positions that have reached holding period"""
