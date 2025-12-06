@@ -117,7 +117,13 @@ class MultiPairTrader:
                     # Use the first trade (there should only be one per instrument in our strategy)
                     trade = trades[0]
                     entry_price = trade['price']
-                    entry_time = datetime.fromisoformat(trade['openTime'].replace('Z', '+00:00'))
+                    # OANDA returns nanoseconds, Python only handles microseconds - truncate to 6 decimal places
+                    time_str = trade['openTime'].replace('Z', '+00:00')
+                    # Truncate fractional seconds to 6 digits (microseconds)
+                    if '.' in time_str:
+                        parts = time_str.split('.')
+                        time_str = parts[0] + '.' + parts[1][:6] + parts[1][9:]  # Keep first 6 digits of fractional seconds
+                    entry_time = datetime.fromisoformat(time_str)
 
                     # Calculate position size based on units and entry price
                     # For USD pairs (USD_JPY), units = dollars
