@@ -1,48 +1,106 @@
 # 4-Pair Forex Trading Strategy - Comprehensive Backtest Results
 
-**Test Period:** September 2009 - November 2025 (15+ years, 4500 days)
+**✅ UPDATED: December 6, 2025 - Now using ACTUAL VARIABLE SPREADS from OANDA data**
+
+**Test Period:** September 2009 - December 2025 (~18 years, 4500 trading days)
 **Pairs:** EURUSD, GBPUSD, AUDUSD, USDJPY
-**Data Source:** OANDA Live Account (9 AM EST / 14:00 UTC alignment)
+**Data Source:** OANDA Historical Data with actual bid/ask spreads (9 AM EST / 14:00 UTC alignment)
 **Strategy:** XGBoost ML with 378-day rolling training, 1-day predictions, percentile-based signals (48th/52nd)
+**Spread Model:** Variable spreads (mean 0.020-0.024% per pair) instead of fixed assumptions
 
 ---
 
 ## Overall Performance Summary
 
-| Leverage | Annual Return | Max Drawdown | Sharpe Ratio | Total Return (15yr) | Winning Years | Account Survival |
-|----------|--------------|--------------|--------------|---------------------|---------------|------------------|
-| 1.0x | 28.95% | -5.09% | 5.39 | 9,273% | 15/15 (100%) | ✓ |
-| 1.5x | 46.30% | -7.55% | 5.39 | 89,151% | 15/15 (100%) | ✓ |
-| **2.0x** | **65.87%** | **-9.95%** | **5.39** | **840,525%** | **15/15 (100%)** | **✓** |
-| 2.5x | 87.96% | -12.29% | 5.39 | 7.8M% | 15/15 (100%) | ✓ |
-| 3.0x | 112.85% | -14.57% | 5.39 | 72.2M% | 15/15 (100%) | ✓ |
-| 3.5x | 140.90% | -16.81% | 5.39 | 658M% | 15/15 (100%) | ✓ |
-| 4.0x | 172.48% | -18.98% | 5.39 | 5.9B% | 15/15 (100%) | ✓ |
-| 4.5x | 208.01% | -21.11% | 5.39 | 53T% | 15/15 (100%) | ✓ |
-| 5.0x | 247.98% | -23.18% | 5.39 | 468T% | 15/15 (100%) | ✓ |
-| 6.0x | 343.38% | -27.18% | 5.39 | 35.4Q% | 15/15 (100%) | ✓ |
-| 7.0x | 463.63% | -30.99% | 5.39 | 2.6Qd% | 15/15 (100%) | ✓ |
-| 8.0x | 614.87% | -34.61% | 5.39 | 17.9Qd% | 15/15 (100%) | ✓ |
-| 9.0x | 804.67% | -38.06% | 5.39 | 12Qn% | 15/15 (100%) | ✓ |
-| 10.0x | 1042.33% | -41.34% | 5.39 | 775Qn% | 15/15 (100%) | ✓ |
+**WITH ACTUAL VARIABLE SPREADS FROM OANDA** (mean 0.020-0.024% per pair)
+
+| Leverage | Annual Return | Max DD (Worst) | Avg Annual DD | Sharpe Ratio | Total Return (18yr) | Account Survival |
+|----------|--------------|----------------|---------------|--------------|---------------------|------------------|
+| 1.0x | 24.95% | -5.65% | -2.02% | 4.73 | 5,236% | ✓ |
+| 1.5x | 39.54% | -8.36% | -3.00% | 4.73 | 38,254% | ✓ |
+| **2.0x** | **55.74%** | **-11.00%** | **-4.00%** | **4.73** | **272,669%** | **✓** |
+| 2.5x | 73.72% | -13.57% | -4.98% | 4.73 | 1.9M% | ✓ |
+| 3.0x | 93.67% | -16.07% | -5.95% | 4.73 | 13.4M% | ✓ |
+| 3.5x | 115.78% | -18.51% | -6.88% | 4.73 | 92.1M% | ✓ |
+| 4.0x | 140.27% | -20.87% | -7.78% | 4.73 | 628M% | ✓ |
+| 5.0x | 197.40% | -25.42% | -9.67% | 4.73 | 28.3B% | ✓ |
+| 7.0x | 352.55% | -33.78% | -13.45% | 4.73 | 51T% | ✓ |
+| 10.0x | 735.59% | -44.70% | -19.21% | 4.73 | 2.9Qd% | ✓ |
 
 **Notes:**
-- Sharpe Ratio of 5.39 is exceptional (>3 is considered excellent)
+- **NOW USING ACTUAL SPREADS** - Previous results used fixed spread assumptions
+- **Max DD (Worst)**: The single worst drawdown across 18 years (2023 anomaly)
+- **Avg Annual DD**: What to expect in a typical year (~2.5x smaller than worst case)
+- Sharpe Ratio of 4.73 is exceptional (>3 is considered excellent)
 - No account blowups at any leverage level
-- 100% winning years across all leverage levels tested
+- Test period: ~18 years (4500 trading days), Sept 2009 - Dec 2025
+- Returns are ~12-15% lower with real spreads vs fixed assumptions, but still excellent
+
+---
+
+## Win Rate & Trade Statistics
+
+### Individual Pair Win Rates (Trade Level)
+
+| Pair | Win Rate | Avg Win | Avg Loss | Profit Factor | Trade Frequency |
+|------|----------|---------|----------|---------------|----------------|
+| EURUSD | 38.7% | 0.526% | -0.185% | 1.80 | 97.6% |
+| GBPUSD | 37.7% | 0.574% | -0.187% | 1.86 | 97.7% |
+| AUDUSD | 34.5% | 0.696% | -0.189% | 1.94 | 98.0% |
+| USDJPY | 37.3% | 0.597% | -0.185% | 1.93 | 98.1% |
+
+**Key Insight:** Individual pairs win only 35-39% of trades, BUT wins are much larger than losses (3% TP vs 0.18% SL).
+
+### Portfolio-Level Statistics
+
+**The Magic of Portfolio Diversification:**
+
+| Metric | Value | Interpretation |
+|--------|-------|----------------|
+| **Daily Win Rate** | 54.8% | Portfolio wins more days than it loses! |
+| **Monthly Win Rate** | 90.2% | 156 out of 173 months profitable |
+| **Profit Factor** | 2.79 | Gross wins are 2.79x gross losses |
+| **Risk/Reward Ratio** | 2.30:1 | Average win is 2.3x average loss |
+| **Daily Expectancy (1x)** | 0.101% | Expected gain per trading day |
+
+### Day of Week Performance (2.0x Leverage)
+
+| Day | Avg Daily Return | Win Rate | Pattern |
+|-----|-----------------|----------|---------|
+| Monday | 0.131% | 51.3% | Weakest day |
+| Tuesday | 0.190% | 53.4% | Building momentum |
+| Wednesday | 0.224% | 54.8% | Strong mid-week |
+| Thursday | 0.286% | 57.5% | Strongest returns |
+| Friday | 0.142% | 49.5% | Profit-taking |
+
+**Pattern:** Performance peaks on Thursday (0.286% daily avg). Monday and Friday are weakest, likely due to weekend positioning effects. Mid-week (Tue-Thu) shows consistent strength.
+
+### December Seasonality
+
+| Leverage | Avg December | Best December | Worst December | Win Rate |
+|----------|--------------|---------------|----------------|----------|
+| 1.0x | 2.57% | 5.23% (2014) | -0.43% (2025) | 86.7% |
+| 2.0x | 5.21% | 10.66% (2014) | -0.87% (2025) | 86.7% |
+| 3.5x | 9.30% | 19.19% (2014) | -1.51% (2025) | 86.7% |
+
+**Note:** December 2025 (current month) is tracking as the worst December on record. Historically, 13 out of 15 Decembers have been profitable.
 
 ---
 
 ## Individual Pair Performance (1x Leverage)
 
-| Pair | Total Return | Contribution |
-|------|--------------|--------------|
-| EURUSD | 5,045% | 20.3% |
-| GBPUSD | 7,688% | 31.0% |
-| AUDUSD | 15,818% | 63.7% |
-| USDJPY | 10,539% | 42.4% |
+| Pair | Total Return | Annual Return | Sharpe | Max DD | Win Rate | Contribution |
+|------|--------------|---------------|--------|--------|----------|--------------|
+| USDJPY | 6,662% | 26.38% | 2.99 | -11.99% | 35.9% | 32.0% |
+| AUDUSD | 5,988% | 25.64% | 2.82 | -6.79% | 33.2% | 28.8% |
+| GBPUSD | 4,462% | 23.64% | 2.95 | -6.53% | 36.2% | 21.4% |
+| EURUSD | 3,695% | 22.39% | 2.95 | -7.00% | 37.4% | 17.8% |
 
-**Portfolio Effect:** Equal weighting (25% each) with independent signals provides diversification and smoother equity curve.
+**Key Observations:**
+- USDJPY is the strongest performer (26.38% annual, highest Sharpe of 2.99)
+- All pairs have excellent Sharpe ratios (2.82-2.99, well above 2.0 threshold)
+- USDJPY has the deepest drawdown (-11.99%) but highest returns
+- Equal weighting (25% each) provides diversification despite unequal contributions
 
 ---
 
@@ -52,23 +110,23 @@
 
 | Year | Annual Return | Max DD | End Equity | Notes |
 |------|--------------|--------|------------|-------|
-| 2011 | 22.40% | -0.96% | $1,224 | |
-| 2012 | 30.90% | -1.00% | $1,602 | |
-| 2013 | 44.52% | -1.28% | $2,315 | |
-| 2014 | 24.99% | -1.10% | $2,894 | |
-| 2015 | 47.92% | -1.84% | $4,281 | |
-| 2016 | 69.38% | -1.54% | $7,251 | |
-| 2017 | 27.19% | -1.14% | $9,222 | |
-| 2018 | 29.26% | -1.17% | $11,921 | |
-| 2019 | 21.81% | -1.94% | $14,520 | |
-| 2020 | 42.73% | -1.88% | $20,725 | |
-| 2021 | 21.15% | -1.22% | $25,109 | Weakest year |
-| 2022 | 80.17% | -1.73% | $45,238 | Best year |
-| 2023 | 34.67% | -5.09% | $60,922 | Largest DD year |
-| 2024 | 24.98% | -1.40% | $76,141 | |
-| 2025 | 23.10% | -2.39% | $93,730 | YTD (partial) |
+| 2011 | 19.05% | -1.19% | $1,191 | |
+| 2012 | 25.06% | -1.23% | $1,489 | |
+| 2013 | 39.37% | -1.44% | $2,075 | |
+| 2014 | 21.16% | -1.25% | $2,514 | |
+| 2015 | 39.67% | -2.11% | $3,512 | |
+| 2016 | 61.83% | -1.67% | $5,683 | |
+| 2017 | 21.75% | -1.68% | $6,919 | |
+| 2018 | 24.69% | -1.21% | $8,627 | |
+| 2019 | 16.47% | -2.65% | $10,048 | Weakest year |
+| 2020 | 36.82% | -2.62% | $13,747 | |
+| 2021 | 16.73% | -1.51% | $16,047 | |
+| 2022 | 73.61% | -1.87% | $27,859 | Best year |
+| 2023 | 31.09% | -5.65% | $36,521 | Largest DD year |
+| 2024 | 22.54% | -1.70% | $44,751 | |
+| 2025 | 19.24% | -2.55% | $53,360 | YTD (partial) |
 
-**Summary:** AVG: 36.34% | MEDIAN: 29.26% | MIN: 21.15% | MAX: 80.17%
+**Summary:** AVG: 31.27% | MEDIAN: 24.69% | MIN: 16.47% | MAX: 73.61% | CAGR: 30.36%
 **Winning Years:** 15/15 (100%)
 
 ---
@@ -77,23 +135,23 @@
 
 | Year | Annual Return | Max DD | End Equity | Notes |
 |------|--------------|--------|------------|-------|
-| 2011 | 49.59% | -1.92% | $1,496 | |
-| 2012 | 71.02% | -2.00% | $2,558 | |
-| 2013 | 108.27% | -2.54% | $5,328 | |
-| 2014 | 55.91% | -2.19% | $8,307 | |
-| 2015 | 117.88% | -3.65% | $18,099 | |
-| 2016 | 185.48% | -3.06% | $51,667 | |
-| 2017 | 61.54% | -2.28% | $83,463 | |
-| 2018 | 66.65% | -2.32% | $139,092 | |
-| 2019 | 48.04% | -3.84% | $205,912 | |
-| 2020 | 102.99% | -3.73% | $417,972 | |
-| 2021 | 46.52% | -2.44% | $612,401 | Weakest year |
-| 2022 | 222.49% | -3.44% | $1,974,951 | Best year |
-| 2023 | 80.61% | -9.95% | $3,566,921 | Largest DD year |
-| 2024 | 55.91% | -2.79% | $5,561,218 | |
-| 2025 | 51.16% | -4.73% | $8,406,247 | YTD (partial) |
+| 2011 | 41.53% | -2.36% | $1,415 | |
+| 2012 | 56.11% | -2.45% | $2,210 | |
+| 2013 | 93.71% | -2.86% | $4,280 | |
+| 2014 | 46.52% | -2.49% | $6,271 | |
+| 2015 | 94.29% | -4.18% | $12,184 | |
+| 2016 | 160.65% | -3.32% | $31,759 | |
+| 2017 | 48.02% | -3.35% | $47,010 | |
+| 2018 | 55.08% | -2.41% | $72,901 | |
+| 2019 | 35.36% | -5.24% | $98,677 | Weakest year |
+| 2020 | 86.53% | -5.19% | $184,057 | |
+| 2021 | 36.02% | -3.00% | $250,350 | |
+| 2022 | 199.50% | -3.71% | $749,801 | Best year |
+| 2023 | 71.15% | -11.00% | $1,283,268 | Largest DD year |
+| 2024 | 49.88% | -3.39% | $1,923,369 | |
+| 2025 | 41.82% | -5.03% | $2,727,693 | YTD (partial) |
 
-**Summary:** AVG: 88.27% | MEDIAN: 66.65% | MIN: 46.52% | MAX: 222.49%
+**Summary:** AVG: 74.41% | MEDIAN: 55.08% | MIN: 35.36% | MAX: 199.50% | CAGR: 69.45%
 **Winning Years:** 15/15 (100%)
 
 ---
@@ -102,23 +160,23 @@
 
 | Year | Annual Return | Max DD | End Equity | Notes |
 |------|--------------|--------|------------|-------|
-| 2011 | 101.56% | -3.35% | $2,016 | |
-| 2012 | 154.49% | -3.48% | $5,129 | |
-| 2013 | 258.41% | -4.42% | $18,384 | |
-| 2014 | 116.42% | -3.80% | $39,788 | |
-| 2015 | 286.44% | -6.31% | $153,755 | |
-| 2016 | 519.07% | -5.29% | $951,847 | |
-| 2017 | 130.59% | -3.97% | $2,194,875 | |
-| 2018 | 142.79% | -4.04% | $5,328,997 | |
-| 2019 | 97.55% | -6.66% | $10,527,539 | |
-| 2020 | 241.96% | -6.49% | $36,000,466 | |
-| 2021 | 94.21% | -4.23% | $69,916,669 | Weakest year |
-| 2022 | 663.11% | -5.95% | $533,538,416 | Best year |
-| 2023 | 178.37% | -16.81% | $1.49B | Largest DD year |
-| 2024 | 116.49% | -4.87% | $3.22B | |
-| 2025 | 104.73% | -8.14% | $6.58B | YTD (partial) |
+| 2011 | 83.00% | -4.11% | $1,830 | |
+| 2012 | 117.00% | -4.25% | $3,971 | |
+| 2013 | 215.82% | -4.96% | $12,541 | |
+| 2014 | 94.16% | -4.32% | $24,350 | |
+| 2015 | 216.37% | -7.21% | $77,036 | |
+| 2016 | 428.14% | -5.74% | $406,862 | |
+| 2017 | 97.91% | -5.81% | $805,210 | |
+| 2018 | 114.10% | -4.19% | $1,723,962 | |
+| 2019 | 68.90% | -9.01% | $2,911,840 | Weakest year |
+| 2020 | 194.98% | -8.94% | $8,589,243 | |
+| 2021 | 70.52% | -5.23% | $14,646,555 | |
+| 2022 | 570.79% | -6.41% | $98,247,340 | Best year |
+| 2023 | 153.39% | -18.51% | $248.9M | Largest DD year |
+| 2024 | 102.07% | -5.89% | $503.0M | |
+| 2025 | 83.11% | -8.65% | $921.1M | YTD (partial) |
 
-**Summary:** AVG: 213.75% | MEDIAN: 142.79% | MIN: 94.21% | MAX: 663.11%
+**Summary:** AVG: 174.02% | MEDIAN: 114.10% | MIN: 68.90% | MAX: 570.79% | CAGR: 149.82%
 **Winning Years:** 15/15 (100%)
 
 ---
@@ -127,23 +185,23 @@
 
 | Year | Annual Return | Max DD | End Equity | Notes |
 |------|--------------|--------|------------|-------|
-| 2011 | 170.70% | -4.77% | $2,707 | |
-| 2012 | 277.10% | -4.96% | $10,208 | |
-| 2013 | 512.99% | -6.27% | $62,574 | |
-| 2014 | 199.15% | -5.39% | $187,189 | |
-| 2015 | 579.13% | -8.91% | $1,271,251 | |
-| 2016 | 1228.38% | -7.49% | $16.9M | |
-| 2017 | 228.11% | -5.65% | $55.4M | |
-| 2018 | 251.73% | -5.72% | $194.9M | |
-| 2019 | 162.36% | -9.41% | $511.3M | |
-| 2020 | 471.59% | -9.20% | $2.92B | |
-| 2021 | 156.41% | -6.00% | $7.49B | Weakest year |
-| 2022 | 1680.62% | -8.40% | $133.4B | Best year |
-| 2023 | 325.24% | -23.18% | $567.4B | Largest DD year |
-| 2024 | 199.38% | -6.93% | $1.70T | |
-| 2025 | 175.76% | -11.44% | $4.68T | YTD (partial) |
+| 2011 | 135.89% | -5.84% | $2,359 | |
+| 2012 | 200.44% | -6.02% | $7,087 | |
+| 2013 | 411.83% | -7.03% | $36,272 | |
+| 2014 | 156.21% | -6.12% | $92,933 | |
+| 2015 | 410.64% | -10.16% | $474,554 | |
+| 2016 | 959.25% | -8.11% | $5.0M | |
+| 2017 | 163.78% | -8.22% | $13.3M | |
+| 2018 | 193.96% | -5.94% | $39.0M | |
+| 2019 | 109.77% | -12.66% | $81.8M | Weakest year |
+| 2020 | 362.90% | -12.59% | $378.5M | |
+| 2021 | 112.94% | -7.44% | $806.0M | |
+| 2022 | 1382.06% | -9.05% | $11.9B | Best year |
+| 2023 | 271.83% | -25.42% | $44.4B | Largest DD year |
+| 2024 | 171.34% | -8.35% | $120.5B | |
+| 2025 | 135.15% | -12.15% | $283.4B | YTD (partial) |
 
-**Summary:** AVG: 441.24% | MEDIAN: 251.73% | MIN: 156.41% | MAX: 1680.62%
+**Summary:** AVG: 345.20% | MEDIAN: 193.96% | MIN: 109.77% | MAX: 1382.06% | CAGR: 266.01%
 **Winning Years:** 15/15 (100%)
 
 ---
@@ -154,21 +212,21 @@
 
 | Leverage | Avg DD | Median DD | Worst DD | Year of Worst DD |
 |----------|--------|-----------|----------|------------------|
-| 1.0x | -1.87% | -1.73% | -5.09% | 2023 |
-| 2.0x | -3.20% | -2.79% | -9.95% | 2023 |
-| 3.5x | -5.59% | -4.87% | -16.81% | 2023 |
-| 5.0x | -7.92% | -6.93% | -23.18% | 2023 |
+| 1.0x | -2.02% | -1.68% | -5.65% | 2023 |
+| 2.0x | -4.00% | -3.35% | -11.00% | 2023 |
+| 3.5x | -6.88% | -5.81% | -18.51% | 2023 |
+| 5.0x | -9.67% | -8.22% | -25.42% | 2023 |
 
-**Note:** 2023 showed elevated volatility across all leverage levels but strategy remained profitable with 34.67% to 325.24% returns depending on leverage.
+**Note:** 2023 showed elevated volatility across all leverage levels but strategy remained highly profitable with 31% to 272% returns depending on leverage.
 
 ### Return Distribution by Leverage
 
 | Leverage | Avg Annual | Median Annual | Worst Year | Best Year | Std Dev |
 |----------|-----------|---------------|------------|-----------|---------|
-| 1.0x | 36.34% | 29.26% | 21.15% (2021) | 80.17% (2022) | Low |
-| 2.0x | 88.27% | 66.65% | 46.52% (2021) | 222.49% (2022) | Moderate |
-| 3.5x | 213.75% | 142.79% | 94.21% (2021) | 663.11% (2022) | High |
-| 5.0x | 441.24% | 251.73% | 156.41% (2021) | 1680.62% (2022) | Very High |
+| 1.0x | 31.27% | 24.69% | 16.47% (2019) | 73.61% (2022) | Low |
+| 2.0x | 74.41% | 55.08% | 35.36% (2019) | 199.50% (2022) | Moderate |
+| 3.5x | 174.02% | 114.10% | 68.90% (2019) | 570.79% (2022) | Very High |
+| 5.0x | 345.20% | 193.96% | 109.77% (2019) | 1382.06% (2022) | Very High |
 
 ---
 
@@ -205,32 +263,32 @@ PREDICTION_BUFFER_SIZE = 200 days
 
 ### Conservative (Low Risk, Steady Growth)
 **Leverage: 1.0x - 2.0x**
-- Expected Annual Return: 29% - 66%
-- Max Expected Drawdown: -5% to -10%
+- Expected Annual Return: 25% - 56%
+- Max Expected Drawdown: -6% to -11%
 - Suitable for: Capital preservation with growth
-- On $500: $145 - $330 gain in year 1
+- On $500: $125 - $280 gain in year 1
 
 ### Moderate (Balanced Risk/Reward)
 **Leverage: 2.5x - 3.5x**
-- Expected Annual Return: 88% - 214%
-- Max Expected Drawdown: -12% to -17%
+- Expected Annual Return: 74% - 116%
+- Max Expected Drawdown: -14% to -19%
 - Suitable for: Growth-focused with manageable risk
-- On $500: $440 - $1,070 gain in year 1
+- On $500: $370 - $580 gain in year 1
 
 ### Aggressive (High Risk, Maximum Growth)
 **Leverage: 4.0x - 5.0x**
-- Expected Annual Return: 172% - 441%
-- Max Expected Drawdown: -19% to -23%
+- Expected Annual Return: 140% - 197%
+- Max Expected Drawdown: -21% to -25%
 - Suitable for: Small accounts willing to accept volatility
-- On $500: $860 - $2,206 gain in year 1
+- On $500: $700 - $985 gain in year 1
 
 ### Very Aggressive (Highest Risk/Reward)
-**Leverage: 6.0x+**
-- Expected Annual Return: 343%+
-- Max Expected Drawdown: -27%+
+**Leverage: 7.0x+**
+- Expected Annual Return: 353%+
+- Max Expected Drawdown: -34%+
 - Suitable for: Trading small amounts as proof of concept
-- On $500: $1,716+ gain in year 1
-- **Warning:** Drawdowns can exceed -40% at 10x leverage
+- On $500: $1,765+ gain in year 1
+- **Warning:** Drawdowns can exceed -45% at 10x leverage
 
 ---
 
@@ -249,13 +307,13 @@ PREDICTION_BUFFER_SIZE = 200 days
 
 ## Key Insights
 
-1. **Zero Losing Years:** 100% winning years across all leverage levels from 2011-2025
-2. **Consistent Sharpe Ratio:** 5.39 across all leverage levels indicates excellent risk-adjusted returns
+1. **Real-World Spreads:** Now using actual variable spreads from OANDA data (0.020-0.024% per pair)
+2. **Consistent Sharpe Ratio:** 4.73 across all leverage levels indicates excellent risk-adjusted returns
 3. **Scalable Performance:** Returns scale nearly linearly with leverage without significant degradation
-4. **Manageable Drawdowns:** Even at 5x leverage, max drawdown was only -23.18%
-5. **2022 Standout Year:** Best performance across all leverage levels
-6. **2023 Volatility:** Highest drawdowns but still strong positive returns
-7. **No Blowups:** Strategy survived all market conditions over 15 years
+4. **Manageable Drawdowns:** Even at 5x leverage, max drawdown was only -25.42%
+5. **No Blowups:** Strategy survived all market conditions over 18 years
+6. **Spread Impact:** Real spreads reduce returns by ~12-15% vs fixed assumptions, but strategy remains highly profitable
+7. **Conservative at 1-2x:** 25-56% annual with only -6% to -11% max drawdown is excellent risk/reward
 
 ---
 
@@ -269,9 +327,9 @@ PREDICTION_BUFFER_SIZE = 200 days
 ✅ **Pairs:** EURUSD, GBPUSD, AUDUSD, USDJPY
 
 **Next Trade:** Today at 5:30 PM ET
-**Expected Win Rate:** 100% of years profitable
-**Expected Annual Return:** 65.87% (at 2.0x leverage)
-**Expected Max Drawdown:** -9.95%
+**Expected Win Rate:** Historically 100% of years profitable
+**Expected Annual Return:** 55.74% (at 2.0x leverage, with actual spreads)
+**Expected Max Drawdown:** -11.00%
 
 ---
 
@@ -279,6 +337,7 @@ PREDICTION_BUFFER_SIZE = 200 days
 
 Past performance does not guarantee future results. This backtest uses historical data and the actual live performance may differ. Market conditions change over time. Always practice proper risk management and never risk more than you can afford to lose.
 
-**Generated:** December 3, 2025
-**Backtest Script:** `backtest_multi_pair_leverage_9am.py`
-**Data Source:** OANDA Historical API (5000 candles, ~15 years)
+**Generated:** December 6, 2025
+**Backtest Script:** `backtest_multi_pair_actual_spreads.py`
+**Data Source:** OANDA Historical API with actual variable spreads (4500 days, ~18 years)
+**Key Change:** Now using real-world variable spreads instead of fixed assumptions
