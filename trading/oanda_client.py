@@ -107,6 +107,39 @@ class OandaClient:
             print(f"Error fetching open positions: {e}")
             return None
 
+    def get_open_trades(self):
+        """
+        Get all open trades from OANDA for this pair (includes entry price/time).
+
+        Returns:
+            list: List of open trade dicts with keys 'id', 'price', 'openTime', 'currentUnits'
+        """
+        instrument = self.fetcher.get_instrument_name(self.pair)
+        url = f"{self.base_url}/accounts/{self.account_id}/openTrades"
+
+        try:
+            response = requests.get(url, headers=self.headers)
+            response.raise_for_status()
+            result = response.json()
+
+            # Filter trades for this instrument
+            trades = []
+            for trade in result.get('trades', []):
+                if trade['instrument'] == instrument:
+                    trades.append({
+                        'id': trade['id'],
+                        'price': float(trade['price']),
+                        'openTime': trade['openTime'],
+                        'currentUnits': float(trade['currentUnits']),
+                        'unrealizedPL': float(trade.get('unrealizedPL', 0))
+                    })
+
+            return trades if trades else None
+
+        except requests.exceptions.RequestException as e:
+            print(f"Error fetching open trades: {e}")
+            return None
+
     def place_order(self, signal, current_price, position_size_dollars, stop_loss_pct, take_profit_pct):
         """
         Place market order with stop loss and take profit.
