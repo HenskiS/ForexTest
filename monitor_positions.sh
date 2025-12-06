@@ -9,7 +9,8 @@ source venv/bin/activate
 mkdir -p /home/forex/logs
 
 # Run monitor with tee to show output AND log it
-python monitor_positions.py --pair EURUSD --live 2>&1 | tee -a /home/forex/logs/monitor_$(date +%Y_%m_%d).log
+# Monitor all 4 pairs in the portfolio
+python monitor_positions.py --pairs EURUSD GBPUSD AUDUSD USDJPY --live 2>&1 | tee -a /home/forex/logs/monitor_$(date +%Y_%m_%d).log
 
 # Exit code from python, not tee
 exit ${PIPESTATUS[0]}
