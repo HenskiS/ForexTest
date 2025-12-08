@@ -45,7 +45,9 @@ class TradingConfig:
         'alpha': 0.0001,  # L2 regularization
         'learning_rate': 'adaptive',
         'random_state': 42,
-        'verbose': False
+        'verbose': False,
+        'warm_start': False,
+        'early_stopping': False  # Keep training for all 20 epochs
     }
 
     # Model-specific parameters
