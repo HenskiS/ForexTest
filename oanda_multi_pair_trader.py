@@ -33,7 +33,7 @@ from trading import (
 class MultiPairTrader:
     """Manages trading across multiple currency pairs"""
 
-    def __init__(self, pairs, practice=True, leverage=2.0, dry_run=False):
+    def __init__(self, pairs, practice=True, leverage=2.0, dry_run=False, model_type='xgboost'):
         """
         Initialize multi-pair trader.
 
@@ -42,11 +42,13 @@ class MultiPairTrader:
             practice: Use practice account if True
             leverage: Leverage multiplier (e.g., 2.0 = 2:1 leverage)
             dry_run: Simulate only, don't place actual trades
+            model_type: 'xgboost' or 'ann' (default: 'xgboost')
         """
         self.pairs = pairs
         self.practice = practice
         self.leverage = leverage
         self.dry_run = dry_run
+        self.model_type = model_type.lower()
 
         # Initialize per-pair components
         self.clients = {}
@@ -56,7 +58,7 @@ class MultiPairTrader:
         for pair in pairs:
             self.clients[pair] = OandaClient(pair, practice=practice)
             self.position_managers[pair] = PositionManager(pair)
-            self.models[pair] = TradingModel(pair)
+            self.models[pair] = TradingModel(pair, model_type=self.model_type)
 
         # Single notifier for all pairs
         self.notifier = NotificationService()
@@ -315,11 +317,17 @@ class MultiPairTrader:
             current_price = current_price_data['mid']
             print(f"  Current price: {current_price:.5f}")
 
+            # Use model-specific take profit
+            if self.model_type == 'ann':
+                take_profit_pct = TradingConfig.ANN_TAKE_PROFIT_PCT
+            else:
+                take_profit_pct = TradingConfig.TAKE_PROFIT_PCT
+
             if self.dry_run:
                 print(f"  [DRY RUN] Would place {'LONG' if signal == 1 else 'SHORT'} order:")
                 print(f"    Position size: ${position_size_per_pair:.2f}")
                 print(f"    Stop Loss: {TradingConfig.STOP_LOSS_PCT*100:.2f}%")
-                print(f"    Take Profit: {TradingConfig.TAKE_PROFIT_PCT*100:.2f}%")
+                print(f"    Take Profit: {take_profit_pct*100:.2f}%")
             else:
                 # Place order
                 order_result = client.place_order(
@@ -327,7 +335,7 @@ class MultiPairTrader:
                     current_price=current_price,
                     position_size_dollars=position_size_per_pair,
                     stop_loss_pct=TradingConfig.STOP_LOSS_PCT,
-                    take_profit_pct=TradingConfig.TAKE_PROFIT_PCT
+                    take_profit_pct=take_profit_pct
                 )
 
                 if order_result and order_result['success']:
@@ -358,6 +366,7 @@ class MultiPairTrader:
         print(f"\n{'='*70}")
         print(f"MULTI-PAIR DAILY UPDATE - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         print(f"Pairs: {', '.join(self.pairs)}")
+        print(f"Model: {self.model_type.upper()}")
         print(f"Mode: {'DRY RUN' if self.dry_run else ('PRACTICE' if self.practice else 'LIVE')}")
         print(f"Leverage: {self.leverage:.1f}x")
         print(f"{'='*70}")
@@ -411,6 +420,8 @@ if __name__ == "__main__":
     parser.add_argument('--leverage', type=float, default=2.0, help='Leverage multiplier (default: 2.0)')
     parser.add_argument('--pairs', nargs='+', default=TradingConfig.DEFAULT_PAIRS,
                         help='Currency pairs to trade (default: EURUSD GBPUSD AUDUSD USDJPY)')
+    parser.add_argument('--model', type=str, default='ann', choices=['xgboost', 'ann'],
+                        help='Model type: xgboost or ann (default: ann)')
     parser.add_argument('--yes', action='store_true', help='Skip confirmation prompts (for automated runs)')
     args = parser.parse_args()
 
@@ -426,6 +437,7 @@ if __name__ == "__main__":
     practice = not args.live
     if args.live and not args.dry_run and not args.yes:
         print(f"\nWARNING: You are about to trade on a LIVE account")
+        print(f"Model: {args.model.upper()}")
         print(f"Pairs: {', '.join(args.pairs)}")
         print(f"Leverage: {args.leverage:.1f}x")
         print(f"\nWith {len(args.pairs)} pairs at {args.leverage:.1f}x leverage:")
@@ -451,7 +463,8 @@ if __name__ == "__main__":
             pairs=[p.upper() for p in args.pairs],
             practice=practice,
             leverage=args.leverage,
-            dry_run=args.dry_run
+            dry_run=args.dry_run,
+            model_type=args.model
         )
 
         trader.run_daily_update()

@@ -33,6 +33,26 @@ class TradingConfig:
         'n_jobs': -1
     }
 
+    # ANN Hyperparameters (Optimized via hyperparameter search)
+    ANN_PARAMS = {
+        'hidden_layer_sizes': (13, 20, 31),  # 3 hidden layers
+        'activation': 'tanh',
+        'solver': 'sgd',
+        'learning_rate_init': 0.001,
+        'momentum': 0.4,
+        'batch_size': 64,
+        'max_iter': 20,
+        'alpha': 0.0001,  # L2 regularization
+        'learning_rate': 'adaptive',
+        'random_state': 42,
+        'verbose': False
+    }
+
+    # Model-specific parameters
+    ANN_TAKE_PROFIT_PCT = 0.0500  # 5.00% take profit for ANN (optimized)
+    ANN_PERCENTILE_LOWER = 50  # Median split for ANN
+    ANN_PERCENTILE_UPPER = 50  # Median split for ANN
+
     # Technical Indicators
     TECHNICAL_FEATURES = [
         'momentum', 'avg_price', 'range', 'ohlc',
