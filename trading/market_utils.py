@@ -47,9 +47,10 @@ def is_forex_market_open():
 def calculate_technical_features(df):
     """
     Calculate all technical features for trading model.
+    Uses the optimized 31-feature set from train_all_pairs_optimized_hyperparams.py
 
     Args:
-        df: DataFrame with OHLC data (columns: open, high, low, close)
+        df: DataFrame with OHLC data (columns: open, high, low, close, volume)
 
     Returns:
         DataFrame with added technical indicator columns
@@ -98,31 +99,34 @@ def calculate_technical_features(df):
     rs = gain / loss
     df['rsi'] = 100 - (100 / (1 + rs))
 
-    # Stochastic
-    lowest_low = df['low'].rolling(window=14).min()
-    highest_high = df['high'].rolling(window=14).max()
-    df['stoch_k'] = 100 * ((df['close'] - lowest_low) / (highest_high - lowest_low))
+    # Stochastic (using 20-day window to match train script)
+    high_20 = df['high'].rolling(window=20).max()
+    low_20 = df['low'].rolling(window=20).min()
+    df['stoch_k'] = 100 * (df['close'] - low_20) / (high_20 - low_20)
     df['stoch_d'] = df['stoch_k'].rolling(window=3).mean()
 
-    # CCI
-    tp = (df['high'] + df['low'] + df['close']) / 3
-    sma = tp.rolling(window=20).mean()
-    mad = tp.rolling(window=20).apply(lambda x: np.abs(x - x.mean()).mean())
-    df['cci'] = (tp - sma) / (0.015 * mad)
-
-    # Williams %R
-    df['williams_r'] = -100 * ((highest_high - df['close']) / (highest_high - lowest_low))
-
     # Bollinger Bands
-    middle = df['close'].rolling(window=20).mean()
-    std = df['close'].rolling(window=20).std()
-    df['bb_upper'] = middle + (std * 2)
-    df['bb_middle'] = middle
-    df['bb_lower'] = middle - (std * 2)
-    df['bb_width'] = df['bb_upper'] - df['bb_lower']
-    df['bb_position'] = (df['close'] - df['bb_lower']) / (df['bb_upper'] - df['bb_lower'])
+    df['bb_middle'] = df['close'].rolling(window=20).mean()
+    bb_std = df['close'].rolling(window=20).std()
+    df['bb_upper'] = df['bb_middle'] + (bb_std * 2)
+    df['bb_lower'] = df['bb_middle'] - (bb_std * 2)
+    df['bb_width'] = (df['bb_upper'] - df['bb_lower']) / df['bb_middle']
 
     # ATR
     df['atr'] = atr
+
+    # Volume indicator
+    df['volume_sma'] = df['volume'].rolling(window=20).mean()
+
+    # Price position features
+    df['close_to_high'] = (df['high'] - df['close']) / (df['high'] - df['low'] + 1e-10)
+    df['close_to_low'] = (df['close'] - df['low']) / (df['high'] - df['low'] + 1e-10)
+
+    # Lagged returns
+    for lag in [1, 2, 3, 5, 10]:
+        df[f'return_lag_{lag}'] = df['close'].pct_change(lag)
+
+    # Target for training (1-day forward return)
+    df['target_1day_return'] = df['close'].pct_change(1).shift(-1)
 
     return df

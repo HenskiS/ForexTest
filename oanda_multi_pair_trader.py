@@ -262,6 +262,9 @@ class MultiPairTrader:
             # Generate prediction
             prediction = self.models[pair].predict(df_clean)
 
+            # Update prediction buffer for threshold calculation
+            self.models[pair].add_prediction_to_buffer(prediction)
+
             trained_models[pair] = {
                 'prediction': prediction,
                 'df_clean': df_clean
