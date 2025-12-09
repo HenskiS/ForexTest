@@ -61,8 +61,8 @@ def backtest_pair(pair, stop_loss, take_profit, hold_length=1):
         test_df['spread_pct'] = 0.00025
 
     # Backtest parameters
-    LOWER_PCT = 48
-    UPPER_PCT = 52
+    LOWER_PCT = 50
+    UPPER_PCT = 50
     BUFFER_SIZE = 200
     BUFFER_WARMUP = 50
 
