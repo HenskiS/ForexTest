@@ -140,16 +140,16 @@ class OandaClient:
             print(f"Error fetching open trades: {e}")
             return None
 
-    def place_order(self, signal, current_price, position_size_dollars, stop_loss_pct, take_profit_pct):
+    def place_order(self, signal, current_price, position_size_dollars, stop_loss_pct, take_profit_pct=None):
         """
-        Place market order with stop loss and take profit.
+        Place market order with stop loss and optional take profit.
 
         Args:
             signal: 1 for long, -1 for short
             current_price: Current market price
             position_size_dollars: Position size in dollars
-            stop_loss_pct: Stop loss as decimal (e.g., 0.0018 for 0.18%)
-            take_profit_pct: Take profit as decimal (e.g., 0.0200 for 2.00%)
+            stop_loss_pct: Stop loss as decimal (e.g., 0.02 for 2%)
+            take_profit_pct: Take profit as decimal (e.g., 0.03 for 3%), or None for no TP
 
         Returns:
             dict: Order fill info with keys 'success', 'entry_price', 'trade_id', or None if failed
@@ -191,11 +191,11 @@ class OandaClient:
         # Calculate stop/target prices
         if signal == 1:  # Long
             stop_price = current_price * (1 - stop_loss_pct)
-            target_price = current_price * (1 + take_profit_pct)
+            target_price = current_price * (1 + take_profit_pct) if take_profit_pct else None
             order_units = abs(units)
         else:  # Short
             stop_price = current_price * (1 + stop_loss_pct)
-            target_price = current_price * (1 - take_profit_pct)
+            target_price = current_price * (1 - take_profit_pct) if take_profit_pct else None
             order_units = -abs(units)
 
         # Prepare order with correct precision
@@ -208,12 +208,15 @@ class OandaClient:
                 "positionFill": "DEFAULT",
                 "stopLossOnFill": {
                     "price": f"{stop_price:.{price_precision}f}"
-                },
-                "takeProfitOnFill": {
-                    "price": f"{target_price:.{price_precision}f}"
                 }
             }
         }
+
+        # Add take profit only if specified
+        if target_price is not None:
+            order_data["order"]["takeProfitOnFill"] = {
+                "price": f"{target_price:.{price_precision}f}"
+            }
 
         url = f"{self.base_url}/accounts/{self.account_id}/orders"
 
@@ -222,7 +225,10 @@ class OandaClient:
             print(f"  Units: {order_units}")
             print(f"  Entry: {current_price:.5f}")
             print(f"  Stop Loss: {stop_price:.5f} ({stop_loss_pct*100:.2f}%)")
-            print(f"  Take Profit: {target_price:.5f} ({take_profit_pct*100:.2f}%)")
+            if target_price is not None:
+                print(f"  Take Profit: {target_price:.5f} ({take_profit_pct*100:.2f}%)")
+            else:
+                print(f"  Take Profit: None (time-based exit only)")
 
             response = requests.post(url, headers=self.headers, json=order_data)
             response.raise_for_status()

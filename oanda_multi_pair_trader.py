@@ -1,17 +1,19 @@
 """
 OANDA Multi-Pair Production Trading Bot
 
-Manages 4-pair diversified portfolio strategy:
-- EURUSD, GBPUSD, AUDUSD, USDJPY
-- Equal capital allocation per pair (25% each)
-- 2:1 leverage ($250 position per pair on $500 account)
-- Independent signal generation per pair
-- Portfolio-level risk management
+"Sleep Well" Configuration:
+- EURUSD, GBPUSD, AUDUSD, USDJPY (4 pairs, 25% each)
+- 10/90 percentile thresholds (fewer, higher-quality trades)
+- 5-day holding period
+- 2% stop loss, no take profit (time-based exit)
+- 1.5x leverage
 
-Based on backtest results:
-- 36.22% annual return
-- 68.6% of days have at least 1 win
-- Low correlation (0.220) = good diversification
+Based on backtest results (500 days):
+- 65% annual return
+- 69% win rate
+- -14% max drawdown
+- 88% of months profitable
+- ~4% average monthly return
 
 WARNING: This bot trades real money. Test thoroughly on practice account first!
 """
@@ -33,7 +35,7 @@ from trading import (
 class MultiPairTrader:
     """Manages trading across multiple currency pairs"""
 
-    def __init__(self, pairs, practice=True, leverage=2.0, dry_run=False, model_type='xgboost'):
+    def __init__(self, pairs, practice=True, leverage=1.5, dry_run=False, model_type='xgboost'):
         """
         Initialize multi-pair trader.
 
@@ -178,16 +180,24 @@ class MultiPairTrader:
                 print(f"\n{pair}: No position to check")
                 continue
 
+            # Calculate business days held
+            entry_date = pm.entry_date.date()
+            today = datetime.now().date()
+            if entry_date.weekday() < 5:
+                business_days_held = 1 + pm._count_business_days(entry_date, today)
+            else:
+                business_days_held = pm._count_business_days(entry_date, today)
+
             print(f"\n{pair}: Current position")
             print(f"  Direction: {'LONG' if pm.position == 1 else 'SHORT'}")
             print(f"  Entry: {pm.entry_price:.5f}")
-            print(f"  Entry date: {pm.entry_date.date()}")
+            print(f"  Entry date: {pm.entry_date.date()} ({business_days_held} trading days held)")
 
             # Check if should exit by time
             should_exit = pm.should_exit_by_time(TradingConfig.HOLDING_PERIOD_DAYS)
 
             if should_exit:
-                print(f"  Time-based exit triggered (held {TradingConfig.HOLDING_PERIOD_DAYS} day)")
+                print(f"  Time-based exit triggered (held {business_days_held}/{TradingConfig.HOLDING_PERIOD_DAYS} trading days)")
 
                 # Get current price
                 current_price_data = client.fetcher.get_current_price(pair)
@@ -222,7 +232,7 @@ class MultiPairTrader:
                             pnl_pct=pnl['pnl_pct'],
                             pnl_dollars=pnl['pnl_dollars'],
                             exit_reason='TIME_EXIT',
-                            days_held=(datetime.now().date() - pm.entry_date.date()).days
+                            days_held=business_days_held
                         )
 
                         pm.close_position()
@@ -233,7 +243,7 @@ class MultiPairTrader:
                     print(f"  [DRY RUN] Would close position")
                     pm.close_position()
             else:
-                print(f"  Holding (not yet {TradingConfig.HOLDING_PERIOD_DAYS} day old)")
+                print(f"  Holding ({business_days_held}/{TradingConfig.HOLDING_PERIOD_DAYS} trading days)")
 
     def train_all_models(self):
         """Train models for all pairs"""
@@ -262,8 +272,7 @@ class MultiPairTrader:
             # Generate prediction
             prediction = self.models[pair].predict(df_clean)
 
-            # Update prediction buffer for threshold calculation
-            self.models[pair].add_prediction_to_buffer(prediction)
+            # Note: prediction is added to buffer in generate_signal()
 
             trained_models[pair] = {
                 'prediction': prediction,
@@ -330,7 +339,10 @@ class MultiPairTrader:
                 print(f"  [DRY RUN] Would place {'LONG' if signal == 1 else 'SHORT'} order:")
                 print(f"    Position size: ${position_size_per_pair:.2f}")
                 print(f"    Stop Loss: {TradingConfig.STOP_LOSS_PCT*100:.2f}%")
-                print(f"    Take Profit: {take_profit_pct*100:.2f}%")
+                if take_profit_pct:
+                    print(f"    Take Profit: {take_profit_pct*100:.2f}%")
+                else:
+                    print(f"    Take Profit: None (time-based exit)")
             else:
                 # Place order
                 order_result = client.place_order(
@@ -420,7 +432,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='OANDA Multi-Pair Trader - 4 Pair Diversified Strategy')
     parser.add_argument('--live', action='store_true', help='Use LIVE account (default: practice)')
     parser.add_argument('--dry-run', action='store_true', help='Simulate only, do not place trades')
-    parser.add_argument('--leverage', type=float, default=2.0, help='Leverage multiplier (default: 2.0)')
+    parser.add_argument('--leverage', type=float, default=1.5, help='Leverage multiplier (default: 1.5)')
     parser.add_argument('--pairs', nargs='+', default=TradingConfig.DEFAULT_PAIRS,
                         help='Currency pairs to trade (default: EURUSD GBPUSD AUDUSD USDJPY)')
     parser.add_argument('--model', type=str, default='ann', choices=['xgboost', 'ann'],

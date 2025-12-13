@@ -101,12 +101,40 @@ class PositionManager:
         """Check if currently in a position"""
         return self.position != 0
 
+    def _count_business_days(self, start_date, end_date):
+        """
+        Count business days (weekdays) between two dates.
+
+        Args:
+            start_date: Start date
+            end_date: End date
+
+        Returns:
+            int: Number of business days (excluding start, including end)
+        """
+        if start_date >= end_date:
+            return 0
+
+        business_days = 0
+        current = start_date + timedelta(days=1)  # Start counting from day after entry
+
+        while current <= end_date:
+            # Monday = 0, Sunday = 6
+            if current.weekday() < 5:  # Weekday
+                business_days += 1
+            current += timedelta(days=1)
+
+        return business_days
+
     def should_exit_by_time(self, holding_period_days=1):
         """
         Check if position should be exited based on holding period.
 
+        Counts business days (weekdays only) to match backtest behavior.
+        Entry day counts as day 1.
+
         Args:
-            holding_period_days: Maximum days to hold position
+            holding_period_days: Maximum trading days to hold position
 
         Returns:
             bool: True if position should be exited by time
@@ -114,8 +142,16 @@ class PositionManager:
         if not self.has_position() or self.entry_date is None:
             return False
 
-        # Calculate days held (use date, not datetime, to count calendar days)
-        days_held = (datetime.now().date() - self.entry_date.date()).days
+        # Count business days held (weekdays only)
+        # Entry day = day 1, so we check if business_days >= holding_period_days
+        entry_date = self.entry_date.date()
+        today = datetime.now().date()
+
+        # Count entry day as day 1 if it's a weekday
+        if entry_date.weekday() < 5:
+            days_held = 1 + self._count_business_days(entry_date, today)
+        else:
+            days_held = self._count_business_days(entry_date, today)
 
         return days_held >= holding_period_days
 
@@ -168,8 +204,13 @@ class PositionManager:
             print("ERROR: Could not calculate P&L")
             return
 
-        # Calculate days held
-        days_held = (datetime.now().date() - self.entry_date.date()).days
+        # Calculate business days held
+        entry_date = self.entry_date.date()
+        today = datetime.now().date()
+        if entry_date.weekday() < 5:
+            days_held = 1 + self._count_business_days(entry_date, today)
+        else:
+            days_held = self._count_business_days(entry_date, today)
 
         trade_record = {
             'entry_date': self.entry_date.strftime('%Y-%m-%d'),

@@ -10,8 +10,8 @@ class TradingConfig:
     """Trading configuration and parameters"""
 
     # Trading Parameters
-    STOP_LOSS_PCT = 0.0018  # 0.18% stop loss
-    TAKE_PROFIT_PCT = 0.0300  # 3.00% take profit (optimized for metals/commodities)
+    STOP_LOSS_PCT = 0.02  # 2% stop loss (Sleep Well config)
+    TAKE_PROFIT_PCT = 0.0300  # 3.00% take profit (for XGBoost/commodities)
     TRANSACTION_COST_PCT = 0.0002  # 0.02% spread + commission
 
     # Model Parameters
@@ -50,26 +50,27 @@ class TradingConfig:
         'early_stopping': False  # Keep training for all 20 epochs
     }
 
-    # Model-specific parameters
-    ANN_TAKE_PROFIT_PCT = 0.0500  # 5.00% take profit for ANN (optimized)
-    ANN_PERCENTILE_LOWER = 50  # Median split for ANN
-    ANN_PERCENTILE_UPPER = 50  # Median split for ANN
+    # Model-specific parameters (Sleep Well config: 10/90, 5-day, 2% SL, no TP, 1.5x)
+    ANN_TAKE_PROFIT_PCT = None  # No take profit for ANN (time-based exit only)
+    ANN_PERCENTILE_LOWER = 10  # 10th percentile for short signals
+    ANN_PERCENTILE_UPPER = 90  # 90th percentile for long signals
 
     # Technical Indicators (31 features - optimized set)
+    # Order must match backtest's calculate_features() column order
     TECHNICAL_FEATURES = [
         'momentum', 'avg_price', 'range', 'ohlc',
         'ema_10', 'ema_20', 'ema_50', 'ema_100', 'ema_200',
         'macd', 'macd_signal', 'macd_hist',
         'adx', 'plus_di', 'minus_di',
         'rsi', 'stoch_k', 'stoch_d',
-        'bb_upper', 'bb_middle', 'bb_lower', 'bb_width',
+        'bb_middle', 'bb_upper', 'bb_lower', 'bb_width',  # Order matches backtest
         'atr', 'volume_sma',
         'close_to_high', 'close_to_low',
         'return_lag_1', 'return_lag_2', 'return_lag_3', 'return_lag_5', 'return_lag_10'
     ]
 
     # Position Management
-    HOLDING_PERIOD_DAYS = 1  # Hold positions for 1 day
+    HOLDING_PERIOD_DAYS = 5  # Hold positions for 5 days (Sleep Well config)
 
     # Multi-Pair Strategy Parameters
     DEFAULT_PAIRS = ['EURUSD', 'GBPUSD', 'AUDUSD', 'USDJPY']
@@ -81,7 +82,7 @@ class TradingConfig:
         'SUGARUSD', 'SPX500USD', 'DE30EUR', 'WTICOUSD', 'BCOUSD'  # Commodities/Indices (70-220% annual)
     ]
 
-    LEVERAGE = 2.0  # 2:1 leverage for multi-asset strategy
+    LEVERAGE = 1.5  # 1.5:1 leverage (Sleep Well config)
     CAPITAL_PER_PAIR_PCT = 0.10  # 10% capital allocation per asset (10 assets)
 
     # File Paths
