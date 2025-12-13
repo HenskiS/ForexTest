@@ -2,7 +2,7 @@
 
 **ANN-based forex trading strategy optimized for consistent returns with manageable drawdowns.**
 
-## Important Discovery (December 2024)
+## Important Discovery (December 2025)
 
 The original backtest showing 65.1% annual returns had a **bug that allowed overlapping trades** on the same pair. This effectively created implicit leverage without tracking it properly.
 
@@ -166,4 +166,4 @@ python oanda_multi_pair_trader.py --dry-run
 | True diversification | Option 3: More pairs |
 
 ---
-*Strategy developed December 2024. Overlapping trade bug discovered and DCA stop solution developed December 2024.*
+*Strategy developed December 2025. Overlapping trade bug discovered and DCA stop solution developed December 2025.*
