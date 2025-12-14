@@ -10,7 +10,7 @@ class TradingConfig:
     """Trading configuration and parameters"""
 
     # Trading Parameters
-    STOP_LOSS_PCT = 0.02  # 2% stop loss (Sleep Well config)
+    STOP_LOSS_PCT = 0.025  # 2.5% stop loss (Sleep Well config - optimized Dec 2025)
     TAKE_PROFIT_PCT = 0.0300  # 3.00% take profit (for XGBoost/commodities)
     TRANSACTION_COST_PCT = 0.0002  # 0.02% spread + commission
 
@@ -50,7 +50,7 @@ class TradingConfig:
         'early_stopping': False  # Keep training for all 20 epochs
     }
 
-    # Model-specific parameters (Sleep Well config: 10/90, 5-day, 2% SL, no TP, 1.5x)
+    # Model-specific parameters (Sleep Well config: 10/90, 5-day, 2.5% SL, no TP, 2.0x)
     ANN_TAKE_PROFIT_PCT = None  # No take profit for ANN (time-based exit only)
     ANN_PERCENTILE_LOWER = 10  # 10th percentile for short signals
     ANN_PERCENTILE_UPPER = 90  # 90th percentile for long signals
@@ -82,7 +82,7 @@ class TradingConfig:
         'SUGARUSD', 'SPX500USD', 'DE30EUR', 'WTICOUSD', 'BCOUSD'  # Commodities/Indices (70-220% annual)
     ]
 
-    LEVERAGE = 1.5  # 1.5:1 leverage (Sleep Well config)
+    LEVERAGE = 2.0  # 2.0:1 leverage (Sleep Well config - optimized Dec 2025)
     CAPITAL_PER_PAIR_PCT = 0.10  # 10% capital allocation per asset (10 assets)
 
     # File Paths
