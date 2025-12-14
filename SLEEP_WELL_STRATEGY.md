@@ -54,37 +54,77 @@ Implement the overlapping approach using **Dollar Cost Averaged stop losses**. T
 1. Track "virtual positions" internally (up to 5 per pair)
 2. Each signal gets full 25% allocation
 3. Calculate weighted average entry price across all virtual positions
-4. Set ONE stop loss at 2% below (long) or above (short) the average entry
+4. Set ONE stop loss below (long) or above (short) the average entry
 5. When stop hits: entire position closes (all virtual slots)
 6. Time exits: each virtual slot exits after its own 5-day hold period
 
-**Expected Performance at various leverage levels:**
+#### Linear Stop Tightening (Recommended)
 
-| Leverage | Annual Return | Max Drawdown | Sharpe |
-|----------|---------------|--------------|--------|
-| 1.0x     | 43.4%         | -12.7%       | 7.02   |
-| 1.5x     | 71.4%         | -18.4%       | 7.02   |
-| 2.0x     | 104.7%        | -23.8%       | 7.02   |
+As more positions are added, tighten the stop loss to reduce max drawdown:
+
+| Slots Filled | Stop Loss % |
+|--------------|-------------|
+| 1            | 2.0%        |
+| 2            | 1.75%       |
+| 3            | 1.5%        |
+| 4            | 1.25%       |
+| 5            | 1.0%        |
+
+**Expected Performance at 1.5x leverage (5 pairs):**
+
+| Strategy | Annual Return | Max Drawdown | Sharpe | Win Rate |
+|----------|---------------|--------------|--------|----------|
+| Fixed 2% SL | 55.0% | -13.3% | 4.97 | 62.7% |
+| **Linear Tightening** | **51.2%** | **-13.1%** | **4.74** | **61.2%** |
+
+Linear tightening trades ~4% annual return for slightly better max drawdown.
+
+> **Note (December 2025):** Performance revised down from ~68% due to OANDA data re-fetch that corrected timezone issues and changed the historical data composition. The current numbers reflect clean, properly-aligned daily candles.
+
+#### Yearly Performance (Baseline 2% SL @ 1.5x, 5 pairs)
+
+| Year | Return | Max DD | Win Rate |
+|------|--------|--------|----------|
+| 2011 | 28.8%  | -3.4%  | 73.6%    |
+| 2012 | 76.2%  | -5.0%  | 68.6%    |
+| 2013 | 27.1%  | -12.3% | 58.2%    |
+| 2014 | 51.3%  | -11.2% | 61.8%    |
+| 2015 | 36.3%  | -8.3%  | 60.9%    |
+| 2016 | 39.7%  | -13.3% | 53.9%    |
+| 2017 | 59.9%  | -8.0%  | 64.1%    |
+| 2018 | 51.4%  | -5.8%  | 63.1%    |
+| 2019 | 25.2%  | -9.0%  | 56.3%    |
+| 2020 | 30.1%  | -11.5% | 57.5%    |
+| 2021 | 76.8%  | -2.0%  | 67.5%    |
+| 2022 | 110.9% | -7.9%  | 62.0%    |
+| 2023 | 73.2%  | -3.1%  | 69.0%    |
+| 2024 | 89.7%  | -2.4%  | 71.7%    |
+| 2025 | 24.6%  | -7.2%  | 58.4%    |
+
+**15 consecutive profitable years.** Worst year: 2019 (+25.2%), worst drawdown: 2016 (-13.3%).
 
 **Pros:**
 - Captures all signals
 - Higher returns through more capital deployment
 - Averaged stop prevents premature stop-outs
+- Linear tightening reduces max drawdown
 
 **Cons:**
 - More complex position management
-- Higher drawdown due to correlated exits
+- Correlated exits when stop hits
 - Requires tracking virtual positions internally
 
 ### Option 3: Add More Pairs
 
-Instead of overlapping trades on 4 pairs, add more currency pairs:
-- **20 pairs × 1 trade each** = same capital deployment as 4 pairs × 5 overlapping
+Instead of overlapping trades on 5 pairs, add more currency pairs:
+- **25 pairs × 1 trade each** = same capital deployment as 5 pairs × 5 overlapping
 - True diversification across different currencies
 - Each pair has independent stop loss
 - Simpler than DCA stop approach
 
-**Candidates:** USDCAD, USDCHF, NZDUSD, EURGBP, EURJPY, GBPJPY, etc.
+**Already Added:** EURJPY (December 2025) - boosted returns from 40.9% to 55.0% for 4→5 pairs
+
+**Candidates:** USDCAD, USDCHF, NZDUSD, EURGBP, GBPJPY, AUDJPY, etc.
 
 **Requires:** Testing ANN predictions on additional pairs
 
@@ -98,11 +138,12 @@ Instead of overlapping trades on 4 pairs, add more currency pairs:
 | Architecture | (13, 20, 31) layers |
 | Thresholds | 10/90 percentile |
 | Hold Period | 5 trading days |
-| Stop Loss | 2% |
+| Stop Loss | 2% → 1% (linear tightening) |
 | Take Profit | None (time-based exit) |
 | Leverage | 1.5x |
-| Pairs | EURUSD, GBPUSD, AUDUSD, USDJPY |
-| Allocation | 25% per pair |
+| Pairs | EURUSD, GBPUSD, AUDUSD, USDJPY, EURJPY |
+| Allocation | 20% per pair |
+| Max Slots | 5 per pair |
 
 ## Why the Overlapping Approach Works
 
@@ -162,8 +203,8 @@ python oanda_multi_pair_trader.py --dry-run
 | If you want... | Choose |
 |----------------|--------|
 | Simplicity + lower risk | Option 1: Single position |
-| Maximum returns + accept higher DD | Option 2: DCA Stop |
+| Best risk-adjusted returns | Option 2: DCA Stop w/ Linear Tightening |
 | True diversification | Option 3: More pairs |
 
 ---
-*Strategy developed December 2025. Overlapping trade bug discovered and DCA stop solution developed December 2025.*
+*Strategy developed December 2025. Overlapping trade bug discovered, DCA stop solution developed, and linear stop tightening optimized December 2025. EURJPY added as 5th pair December 2025. Performance numbers revised after OANDA data quality fixes.*

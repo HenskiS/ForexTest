@@ -1,19 +1,19 @@
 """
 OANDA Multi-Pair Production Trading Bot
 
-"Sleep Well" Configuration:
-- EURUSD, GBPUSD, AUDUSD, USDJPY (4 pairs, 25% each)
+"Sleep Well" Configuration (8 pairs):
+- EURUSD, GBPUSD, AUDUSD, USDJPY, EURJPY, USDCAD, USDCHF, NZDUSD
 - 10/90 percentile thresholds (fewer, higher-quality trades)
 - 5-day holding period
 - 2% stop loss, no take profit (time-based exit)
-- 1.5x leverage
+- 1.5x leverage, 22.5% allocation per slot for ~100% annual
 
-Based on backtest results (500 days):
-- 65% annual return
-- 69% win rate
-- -14% max drawdown
-- 88% of months profitable
-- ~4% average monthly return
+Based on backtest results (4500 days):
+- ~100% annual return (with 22.5% allocation @ 1.5x leverage)
+- 63.5% win rate
+- ~14% max drawdown
+- 5.47 Sharpe ratio
+- Average 6.4 positions/day, ~2.2x effective leverage
 
 WARNING: This bot trades real money. Test thoroughly on practice account first!
 """
@@ -180,70 +180,74 @@ class MultiPairTrader:
                 print(f"\n{pair}: No position to check")
                 continue
 
-            # Calculate business days held
-            entry_date = pm.entry_date.date()
-            today = datetime.now().date()
-            if entry_date.weekday() < 5:
-                business_days_held = 1 + pm._count_business_days(entry_date, today)
-            else:
-                business_days_held = pm._count_business_days(entry_date, today)
+            print(f"\n{pair}: {pm.slot_count()} slots open ({'LONG' if pm.direction == 1 else 'SHORT'})")
 
-            print(f"\n{pair}: Current position")
-            print(f"  Direction: {'LONG' if pm.position == 1 else 'SHORT'}")
-            print(f"  Entry: {pm.entry_price:.5f}")
-            print(f"  Entry date: {pm.entry_date.date()} ({business_days_held} trading days held)")
+            # Get slots that should exit by time
+            slots_to_exit = pm.get_slots_to_exit_by_time(TradingConfig.HOLDING_PERIOD_DAYS)
 
-            # Check if should exit by time
-            should_exit = pm.should_exit_by_time(TradingConfig.HOLDING_PERIOD_DAYS)
+            if not slots_to_exit:
+                # Show status of open slots
+                for i, slot in enumerate(pm.get_slots()):
+                    entry_date = slot['entry_date'].date()
+                    today = datetime.now().date()
+                    days_held = pm._count_business_days(entry_date, today)
+                    print(f"  Slot {i+1}: {slot['entry_price']:.5f} ({days_held}/{TradingConfig.HOLDING_PERIOD_DAYS} days)")
+                continue
 
-            if should_exit:
-                print(f"  Time-based exit triggered (held {business_days_held}/{TradingConfig.HOLDING_PERIOD_DAYS} trading days)")
+            print(f"  {len(slots_to_exit)} slot(s) ready for time exit")
 
-                # Get current price
-                current_price_data = client.fetcher.get_current_price(pair)
-                if not current_price_data:
-                    print(f"  ERROR: Failed to get current price")
-                    continue
+            # Get current price for P&L calculation
+            current_price_data = client.fetcher.get_current_price(pair)
+            if not current_price_data:
+                print(f"  ERROR: Failed to get current price")
+                continue
+            current_price = current_price_data['mid']
+            print(f"  Current price: {current_price:.5f}")
 
-                current_price = current_price_data['mid']
-                print(f"  Current price: {current_price:.5f}")
+            # Process exits in reverse order (so indices stay valid)
+            for slot_idx in sorted(slots_to_exit, reverse=True):
+                slot = pm.slots[slot_idx]
+                entry_date = slot['entry_date'].date()
+                today = datetime.now().date()
+                days_held = pm._count_business_days(entry_date, today)
 
-                # Calculate P&L
-                pnl = pm.calculate_pnl(current_price)
-                print(f"  P&L: {pnl['pnl_pct']:.2f}% (${pnl['pnl_dollars']:.2f})")
+                # Calculate P&L for this slot
+                pnl = pm.calculate_pnl(current_price, slot_idx)
+                print(f"  Slot {slot_idx+1}: Entry {slot['entry_price']:.5f}, P&L: {pnl['pnl_pct']:.2f}%")
 
                 if not self.dry_run:
-                    # Close position at OANDA
-                    success = client.close_position(pm.position)
+                    # Try to close specific trade if we have trade_id
+                    if slot.get('trade_id'):
+                        success = client.close_trade(slot['trade_id'])
+                    else:
+                        # Fall back to closing all (less precise)
+                        success = client.close_position(pm.direction)
+
                     if success:
-                        # Log trade (will get prediction when generating signals)
+                        # Log trade
                         pm.log_trade(
                             exit_price=current_price,
                             exit_reason='TIME_EXIT',
-                            prediction=None  # We'll have prediction when entering new
+                            slot_index=slot_idx,
+                            prediction=None
                         )
 
                         # Send notification
                         self.notifier.notify_trade_exit(
                             pair=pair,
-                            direction='LONG' if pm.position == 1 else 'SHORT',
-                            entry_price=pm.entry_price,
+                            direction='LONG' if pm.direction == 1 else 'SHORT',
+                            entry_price=slot['entry_price'],
                             exit_price=current_price,
                             pnl_pct=pnl['pnl_pct'],
                             pnl_dollars=pnl['pnl_dollars'],
                             exit_reason='TIME_EXIT',
-                            days_held=business_days_held
+                            days_held=days_held
                         )
 
-                        pm.close_position()
-                        print(f"  Position closed successfully")
-                    else:
-                        print(f"  ERROR: Failed to close position")
+                        # Remove slot from position manager
+                        pm.remove_slot(slot_idx)
                 else:
-                    print(f"  [DRY RUN] Would close position")
-                    pm.close_position()
-            else:
-                print(f"  Holding ({business_days_held}/{TradingConfig.HOLDING_PERIOD_DAYS} trading days)")
+                    print(f"  [DRY RUN] Would close slot {slot_idx+1}")
 
     def train_all_models(self):
         """Train models for all pairs"""
@@ -304,21 +308,25 @@ class MultiPairTrader:
                 print(f"\n{pair}: Skipping (no trained model)")
                 continue
 
-            if pm.has_position():
-                print(f"\n{pair}: Already in position, skipping entry")
-                continue
-
-            print(f"\n{pair}:")
-            print("-" * 70)
-
+            # Check if we can add a slot (respects direction and max slots)
+            # First peek at the signal to check direction compatibility
             prediction = trained_models[pair]['prediction']
-
-            # Generate signal
             signal = self.models[pair].generate_signal(prediction)
 
             if signal == 0:
-                print(f"  No trade signal (HOLD)")
+                if pm.has_position():
+                    print(f"\n{pair}: {pm.slot_count()}/{pm.MAX_SLOTS} slots open, no new signal")
                 continue
+
+            if not pm.can_add_slot(signal):
+                if pm.direction != 0 and pm.direction != signal:
+                    print(f"\n{pair}: Signal is opposite direction, skipping (FIFO)")
+                else:
+                    print(f"\n{pair}: Max slots ({pm.MAX_SLOTS}) reached, skipping")
+                continue
+
+            print(f"\n{pair}: (slot {pm.slot_count() + 1}/{pm.MAX_SLOTS})")
+            print("-" * 70)
 
             # Get current price
             current_price_data = client.fetcher.get_current_price(pair)
@@ -417,13 +425,15 @@ class MultiPairTrader:
         print("DAILY UPDATE COMPLETE")
         print("="*70)
 
-        active_positions = sum(1 for pm in self.position_managers.values() if pm.has_position())
-        print(f"\nActive positions: {active_positions}/{len(self.pairs)}")
+        total_slots = sum(pm.slot_count() for pm in self.position_managers.values())
+        pairs_with_positions = sum(1 for pm in self.position_managers.values() if pm.has_position())
+        max_slots = len(self.pairs) * PositionManager.MAX_SLOTS
+        print(f"\nActive slots: {total_slots}/{max_slots} ({pairs_with_positions}/{len(self.pairs)} pairs)")
 
         for pair in self.pairs:
             pm = self.position_managers[pair]
             if pm.has_position():
-                print(f"  {pair}: {'LONG' if pm.position == 1 else 'SHORT'} @ {pm.entry_price:.5f}")
+                print(f"  {pair}: {'LONG' if pm.direction == 1 else 'SHORT'} - {pm.slot_count()}/{pm.MAX_SLOTS} slots")
             else:
                 print(f"  {pair}: No position")
 

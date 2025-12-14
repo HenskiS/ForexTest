@@ -2,6 +2,7 @@
 Position Manager
 
 Handles position state tracking, persistence, and trade logging.
+Supports multiple slots per pair with independent stop losses.
 """
 import os
 import json
@@ -11,7 +12,9 @@ from .config import TradingConfig
 
 
 class PositionManager:
-    """Manage trading position state and trade history"""
+    """Manage trading position state and trade history with multi-slot support"""
+
+    MAX_SLOTS = 5  # Maximum slots per pair
 
     def __init__(self, pair):
         """
@@ -29,12 +32,16 @@ class PositionManager:
         # Trade log file
         self.trade_log_file = TradingConfig.get_trade_log(self.pair)
 
-        # Position state
-        self.position = 0  # 0 = no position, 1 = long, -1 = short
+        # Multi-slot position state
+        self.direction = 0  # 0 = no position, 1 = long, -1 = short (shared by all slots)
+        self.slots = []  # List of slot dicts: {entry_price, entry_date, trade_id, position_size}
+
+        # Legacy single-position fields for backwards compatibility
+        self.position = 0
         self.entry_price = None
         self.entry_date = None
         self.trade_id = None
-        self.position_size = 0  # Position size in dollars
+        self.position_size = 0
 
         # Load persisted state
         self.load_state()
@@ -44,20 +51,73 @@ class PositionManager:
         if os.path.exists(self.state_file):
             with open(self.state_file, 'r') as f:
                 state = json.load(f)
-                self.position = state.get('position', 0)
-                self.entry_price = state.get('entry_price')
-                self.entry_date = state.get('entry_date')
-                if self.entry_date:
-                    self.entry_date = datetime.fromisoformat(self.entry_date)
-                self.trade_id = state.get('trade_id')
-                self.position_size = state.get('position_size', 0)
-                print(f"Loaded state: position={self.position}, entry_date={self.entry_date}")
+
+                # Check for new multi-slot format
+                if 'slots' in state:
+                    self.direction = state.get('direction', 0)
+                    self.slots = []
+                    for slot in state.get('slots', []):
+                        slot_data = {
+                            'entry_price': slot['entry_price'],
+                            'entry_date': datetime.fromisoformat(slot['entry_date']) if slot.get('entry_date') else None,
+                            'trade_id': slot.get('trade_id'),
+                            'position_size': slot.get('position_size', 0)
+                        }
+                        self.slots.append(slot_data)
+                    print(f"Loaded state: direction={self.direction}, slots={len(self.slots)}")
+                else:
+                    # Legacy single-position format - migrate to multi-slot
+                    self.direction = state.get('position', 0)
+                    if self.direction != 0:
+                        entry_date = state.get('entry_date')
+                        if entry_date:
+                            entry_date = datetime.fromisoformat(entry_date)
+                        self.slots = [{
+                            'entry_price': state.get('entry_price'),
+                            'entry_date': entry_date,
+                            'trade_id': state.get('trade_id'),
+                            'position_size': state.get('position_size', 0)
+                        }]
+                    else:
+                        self.slots = []
+                    print(f"Migrated legacy state: direction={self.direction}, slots={len(self.slots)}")
+
+                # Update legacy fields for backwards compatibility
+                self._sync_legacy_fields()
         else:
             print("No saved state found - starting fresh")
 
+    def _sync_legacy_fields(self):
+        """Sync legacy single-position fields from slots for backwards compatibility"""
+        if self.slots:
+            # Use first slot's data for legacy fields
+            self.position = self.direction
+            self.entry_price = self.slots[0]['entry_price']
+            self.entry_date = self.slots[0]['entry_date']
+            self.trade_id = self.slots[0]['trade_id']
+            self.position_size = sum(s['position_size'] for s in self.slots)
+        else:
+            self.position = 0
+            self.entry_price = None
+            self.entry_date = None
+            self.trade_id = None
+            self.position_size = 0
+
     def save_state(self):
         """Persist state to disk"""
+        slots_data = []
+        for slot in self.slots:
+            slots_data.append({
+                'entry_price': slot['entry_price'],
+                'entry_date': slot['entry_date'].isoformat() if slot['entry_date'] else None,
+                'trade_id': slot['trade_id'],
+                'position_size': slot['position_size']
+            })
+
         state = {
+            'direction': self.direction,
+            'slots': slots_data,
+            # Keep legacy fields for backwards compatibility
             'position': self.position,
             'entry_price': self.entry_price,
             'entry_date': self.entry_date.isoformat() if self.entry_date else None,
@@ -67,9 +127,95 @@ class PositionManager:
         with open(self.state_file, 'w') as f:
             json.dump(state, f, indent=2)
 
+    def can_add_slot(self, signal, max_slots=None):
+        """
+        Check if a new slot can be added for the given signal.
+
+        Args:
+            signal: 1 for long, -1 for short
+            max_slots: Maximum slots allowed (default: MAX_SLOTS)
+
+        Returns:
+            bool: True if slot can be added
+        """
+        if max_slots is None:
+            max_slots = self.MAX_SLOTS
+
+        # Can't add if at max slots
+        if len(self.slots) >= max_slots:
+            return False
+
+        # Can't add opposite direction (FIFO compliance)
+        if self.direction != 0 and self.direction != signal:
+            return False
+
+        return True
+
+    def add_slot(self, direction, entry_price, position_size, trade_id=None):
+        """
+        Add a new slot to the position.
+
+        Args:
+            direction: 1 for long, -1 for short
+            entry_price: Entry price for this slot
+            position_size: Position size in dollars
+            trade_id: Trade ID from broker (optional)
+
+        Returns:
+            int: Slot index (0-based)
+        """
+        if not self.can_add_slot(direction):
+            print(f"WARNING: Cannot add slot - direction mismatch or max slots reached")
+            return -1
+
+        slot = {
+            'entry_price': entry_price,
+            'entry_date': datetime.now(),
+            'trade_id': trade_id,
+            'position_size': position_size
+        }
+        self.slots.append(slot)
+        self.direction = direction
+        self._sync_legacy_fields()
+        self.save_state()
+
+        slot_num = len(self.slots)
+        print(f"Slot {slot_num}/{self.MAX_SLOTS} opened: {'LONG' if direction == 1 else 'SHORT'} {self.pair} @ {entry_price:.5f}")
+        return slot_num - 1
+
+    def remove_slot(self, slot_index=None, trade_id=None):
+        """
+        Remove a slot by index or trade_id.
+
+        Args:
+            slot_index: Index of slot to remove
+            trade_id: Trade ID to match
+
+        Returns:
+            dict: Removed slot data, or None if not found
+        """
+        if trade_id is not None:
+            for i, slot in enumerate(self.slots):
+                if slot['trade_id'] == trade_id:
+                    slot_index = i
+                    break
+
+        if slot_index is None or slot_index >= len(self.slots):
+            return None
+
+        removed = self.slots.pop(slot_index)
+
+        # Clear direction if no slots left
+        if not self.slots:
+            self.direction = 0
+
+        self._sync_legacy_fields()
+        self.save_state()
+        return removed
+
     def open_position(self, direction, entry_price, position_size, trade_id=None):
         """
-        Record opening of a new position.
+        Record opening of a new position (legacy method - wraps add_slot).
 
         Args:
             direction: 1 for long, -1 for short
@@ -77,29 +223,27 @@ class PositionManager:
             position_size: Position size in dollars
             trade_id: Trade ID from broker (optional)
         """
-        self.position = direction
-        self.entry_price = entry_price
-        self.entry_date = datetime.now()
-        self.position_size = position_size
-        self.trade_id = trade_id
-        self.save_state()
-
-        print(f"Position opened: {'LONG' if direction == 1 else 'SHORT'} {self.pair} @ {entry_price:.5f}")
+        self.add_slot(direction, entry_price, position_size, trade_id)
 
     def close_position(self):
-        """Clear position state after closing"""
-        self.position = 0
-        self.entry_price = None
-        self.entry_date = None
-        self.trade_id = None
-        self.position_size = 0
+        """Clear all slots (legacy method for full position close)"""
+        self.direction = 0
+        self.slots = []
+        self._sync_legacy_fields()
         self.save_state()
-
-        print(f"Position closed: {self.pair}")
+        print(f"All positions closed: {self.pair}")
 
     def has_position(self):
-        """Check if currently in a position"""
-        return self.position != 0
+        """Check if currently in a position (any slots open)"""
+        return len(self.slots) > 0
+
+    def slot_count(self):
+        """Return number of open slots"""
+        return len(self.slots)
+
+    def get_slots(self):
+        """Return list of all slots"""
+        return self.slots.copy()
 
     def _count_business_days(self, start_date, end_date):
         """
@@ -126,106 +270,118 @@ class PositionManager:
 
         return business_days
 
+    def get_slots_to_exit_by_time(self, holding_period_days=5):
+        """
+        Get list of slot indices that should be exited based on holding period.
+
+        Args:
+            holding_period_days: Maximum trading days to hold
+
+        Returns:
+            list: Indices of slots ready to exit
+        """
+        today = datetime.now().date()
+        exit_slots = []
+
+        for i, slot in enumerate(self.slots):
+            if slot['entry_date'] is None:
+                continue
+            entry_date = slot['entry_date'].date()
+            days_held = self._count_business_days(entry_date, today)
+            if days_held >= holding_period_days:
+                exit_slots.append(i)
+
+        return exit_slots
+
     def should_exit_by_time(self, holding_period_days=1):
         """
-        Check if position should be exited based on holding period.
-
-        Counts business days (weekdays only) to match backtest behavior.
-        Entry day counts as day 1.
+        Check if ANY slot should be exited based on holding period.
+        Legacy method - use get_slots_to_exit_by_time for multi-slot.
 
         Args:
             holding_period_days: Maximum trading days to hold position
 
         Returns:
-            bool: True if position should be exited by time
+            bool: True if any slot should be exited
         """
-        if not self.has_position() or self.entry_date is None:
-            return False
+        return len(self.get_slots_to_exit_by_time(holding_period_days)) > 0
 
-        # Count business days held (weekdays only)
-        # Entry day = day 1, so we check if business_days >= holding_period_days
-        entry_date = self.entry_date.date()
-        today = datetime.now().date()
-
-        # Count entry day as day 1 if it's a weekday
-        if entry_date.weekday() < 5:
-            days_held = 1 + self._count_business_days(entry_date, today)
-        else:
-            days_held = self._count_business_days(entry_date, today)
-
-        return days_held >= holding_period_days
-
-    def calculate_pnl(self, exit_price):
+    def calculate_pnl(self, exit_price, slot_index=0):
         """
-        Calculate P&L for current position.
+        Calculate P&L for a specific slot.
 
         Args:
             exit_price: Exit price
+            slot_index: Index of slot to calculate (default: 0)
 
         Returns:
             dict: {'pnl_pct': float, 'pnl_dollars': float}
         """
-        if not self.has_position() or self.entry_price is None:
+        if slot_index >= len(self.slots):
             return None
 
+        slot = self.slots[slot_index]
+
         # Calculate return based on direction
-        if self.position == 1:  # Long
-            pnl_pct = ((exit_price - self.entry_price) / self.entry_price) * 100
+        if self.direction == 1:  # Long
+            pnl_pct = ((exit_price - slot['entry_price']) / slot['entry_price']) * 100
         else:  # Short
-            pnl_pct = ((self.entry_price - exit_price) / self.entry_price) * 100
+            pnl_pct = ((slot['entry_price'] - exit_price) / slot['entry_price']) * 100
 
         # Account for transaction costs
         pnl_pct -= TradingConfig.TRANSACTION_COST_PCT * 100
 
         # Calculate dollar P&L
-        pnl_dollars = (pnl_pct / 100) * self.position_size
+        pnl_dollars = (pnl_pct / 100) * slot['position_size']
 
         return {
             'pnl_pct': pnl_pct,
             'pnl_dollars': pnl_dollars
         }
 
-    def log_trade(self, exit_price, exit_reason, prediction=None):
+    def log_trade(self, exit_price, exit_reason, slot_index=0, prediction=None):
         """
         Log completed trade to CSV file.
 
         Args:
             exit_price: Exit price
             exit_reason: Reason for exit (e.g., 'TIME_EXIT', 'STOP_LOSS', 'TAKE_PROFIT')
+            slot_index: Index of slot being closed
             prediction: Model prediction value (optional)
         """
-        if not self.has_position():
-            print("WARNING: Attempted to log trade with no open position")
+        if slot_index >= len(self.slots):
+            print("WARNING: Invalid slot index for logging")
             return
 
+        slot = self.slots[slot_index]
+
         # Calculate P&L
-        pnl = self.calculate_pnl(exit_price)
+        pnl = self.calculate_pnl(exit_price, slot_index)
         if pnl is None:
             print("ERROR: Could not calculate P&L")
             return
 
         # Calculate business days held
-        entry_date = self.entry_date.date()
+        entry_date = slot['entry_date'].date() if slot['entry_date'] else datetime.now().date()
         today = datetime.now().date()
-        if entry_date.weekday() < 5:
-            days_held = 1 + self._count_business_days(entry_date, today)
-        else:
-            days_held = self._count_business_days(entry_date, today)
+        days_held = self._count_business_days(entry_date, today)
 
         trade_record = {
-            'entry_date': self.entry_date.strftime('%Y-%m-%d'),
+            'entry_date': slot['entry_date'].strftime('%Y-%m-%d') if slot['entry_date'] else '',
             'exit_date': datetime.now().strftime('%Y-%m-%d'),
-            'direction': 'LONG' if self.position == 1 else 'SHORT',
-            'entry_price': self.entry_price,
+            'direction': 'LONG' if self.direction == 1 else 'SHORT',
+            'entry_price': slot['entry_price'],
             'exit_price': exit_price,
-            'position_size': self.position_size,
+            'position_size': slot['position_size'],
             'pnl_pct': round(pnl['pnl_pct'], 4),
             'pnl_dollars': round(pnl['pnl_dollars'], 2),
             'outcome': 'WIN' if pnl['pnl_pct'] > 0 else 'LOSS',
             'exit_reason': exit_reason,
             'days_held': days_held,
             'prediction': round(prediction, 6) if prediction is not None else None,
-            'signal': self.position
+            'signal': self.direction,
+            'slot_num': slot_index + 1,
+            'total_slots': len(self.slots)
         }
 
         # Create DataFrame and append to CSV
@@ -237,7 +393,7 @@ class PositionManager:
             trade_df.to_csv(self.trade_log_file, mode='w', header=True, index=False)
 
         print(f"\nTrade logged to {self.trade_log_file}")
-        print(f"P&L: {pnl['pnl_pct']:.2f}% (${pnl['pnl_dollars']:.2f})")
+        print(f"Slot {slot_index + 1} P&L: {pnl['pnl_pct']:.2f}% (${pnl['pnl_dollars']:.2f})")
 
     def get_trade_history(self, limit=None):
         """

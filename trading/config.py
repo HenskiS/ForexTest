@@ -72,8 +72,8 @@ class TradingConfig:
     # Position Management
     HOLDING_PERIOD_DAYS = 5  # Hold positions for 5 days (Sleep Well config)
 
-    # Multi-Pair Strategy Parameters
-    DEFAULT_PAIRS = ['EURUSD', 'GBPUSD', 'AUDUSD', 'USDJPY']
+    # Multi-Pair Strategy Parameters (8-pair Sleep Well portfolio)
+    DEFAULT_PAIRS = ['EURUSD', 'GBPUSD', 'AUDUSD', 'USDJPY', 'EURJPY', 'USDCAD', 'USDCHF', 'NZDUSD']
 
     # 10-Asset Diversified Portfolio (4 Forex + 6 Commodities/Indices)
     DEFAULT_10_ASSETS = [

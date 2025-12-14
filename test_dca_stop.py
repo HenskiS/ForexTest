@@ -6,9 +6,12 @@ import pandas as pd
 import numpy as np
 import pickle
 
+# 8-pair Sleep Well portfolio
+ALL_PAIRS = ['EURUSD', 'GBPUSD', 'AUDUSD', 'USDJPY', 'EURJPY', 'USDCAD', 'USDCHF', 'NZDUSD']
+
 # Load predictions
 pair_data = {}
-for pair in ['EURUSD', 'GBPUSD', 'AUDUSD', 'USDJPY']:
+for pair in ALL_PAIRS:
     with open(f'optimized_ann_predictions/predictions_{pair}.pkl', 'rb') as f:
         data = pickle.load(f)
     df = pd.read_csv(f'data/{pair}_1day_oanda.csv')
@@ -25,27 +28,29 @@ for pair in ['EURUSD', 'GBPUSD', 'AUDUSD', 'USDJPY']:
     pair_data[pair] = {'predictions': data['predictions'], 'test_indices': data['test_indices'], 'df': df}
 
 BUFFER_SIZE, BUFFER_WARMUP, LOWER_PCT, UPPER_PCT, HOLD_DAYS, SL_PCT, LEVERAGE = 200, 50, 10, 90, 5, 0.02, 1.5
+ALLOC_PER_SLOT = 0.225  # 22.5% per slot for ~100% annual return with 8 pairs
 
 
-def run_netting_dca_stop(max_slots=5, full_size_per_trade=False):
+def run_netting_dca_stop(max_slots=5, full_size_per_trade=True, close_on_opposite=False, tighten_sl=None):
     """
-    Simulate netting account with DCA stop loss.
-    When adding to position, average the entry and set SL 2% below average.
+    Simulate netting account with independent stop losses per position.
+    Each position has its own 2% SL from its entry price.
     Track each 'virtual slot' for time-based exits.
 
-    If full_size_per_trade=True, each trade gets full 25% allocation (implicit leverage).
-    If False, allocation is split: 25% / max_slots per trade.
+    If full_size_per_trade=True, each trade gets full allocation (default).
+    If close_on_opposite=True, close all positions when opposite signal received.
+    tighten_sl parameter kept for backwards compatibility but not used with independent stops.
     """
     all_trades = []
     daily_pnl = {}
 
-    for pair in ['EURUSD', 'GBPUSD', 'AUDUSD', 'USDJPY']:
+    for pair in ALL_PAIRS:
         predictions = pair_data[pair]['predictions']
         test_indices = pair_data[pair]['test_indices']
         df = pair_data[pair]['df']
         prediction_buffer = []
 
-        # Track virtual positions (for time exits) but use combined stop
+        # Track virtual positions - each with independent stop
         virtual_positions = []
 
         for idx, (pred_idx, prediction) in enumerate(zip(test_indices, predictions)):
@@ -64,60 +69,52 @@ def run_netting_dca_stop(max_slots=5, full_size_per_trade=False):
             current_row = df.iloc[current_idx]
             spread = current_row['spread_pct']
 
-            # Process existing positions
-            if virtual_positions:
-                direction = virtual_positions[0]['direction']
-                total_size = sum(p['size'] for p in virtual_positions)
-                avg_entry = sum(p['entry_price'] * p['size'] for p in virtual_positions) / total_size
+            # Process existing positions with INDEPENDENT stops
+            remaining = []
+            for vp in virtual_positions:
+                direction = vp['direction']
+                days_held = current_idx - vp['entry_idx']
 
-                # Combined stop loss at 2% from average entry
-                if direction == 1:
-                    combined_sl = avg_entry * (1 - SL_PCT)
-                else:
-                    combined_sl = avg_entry * (1 + SL_PCT)
-
-                # Check if combined SL hit
+                # Check individual stop loss for this position
                 sl_hit = False
-                if direction == 1 and current_row['low'] <= combined_sl:
-                    sl_hit = True
-                    exit_price = combined_sl * (1 - spread)
-                elif direction == -1 and current_row['high'] >= combined_sl:
-                    sl_hit = True
-                    exit_price = combined_sl * (1 + spread)
+                if direction == 1:
+                    sl_price = vp['entry_price'] * (1 - SL_PCT)
+                    if current_row['low'] <= sl_price:
+                        sl_hit = True
+                        exit_price = sl_price * (1 - spread)
+                        pnl = (exit_price / vp['entry_price']) - 1
+                else:
+                    sl_price = vp['entry_price'] * (1 + SL_PCT)
+                    if current_row['high'] >= sl_price:
+                        sl_hit = True
+                        exit_price = sl_price * (1 + spread)
+                        pnl = (vp['entry_price'] / exit_price) - 1
 
                 if sl_hit:
-                    # Close ALL positions at combined SL
-                    for vp in virtual_positions:
-                        if direction == 1:
-                            pnl = (exit_price / vp['entry_price']) - 1
-                        else:
-                            pnl = (vp['entry_price'] / exit_price) - 1
-                        all_trades.append({'pnl': pnl, 'pair': pair, 'date': vp['entry_date'], 'exit': 'SL'})
-                        alloc = 0.25 * vp['size'] if full_size_per_trade else 0.25 / max_slots * vp['size']
-                        if vp['entry_date'] not in daily_pnl:
-                            daily_pnl[vp['entry_date']] = 0.0
-                        daily_pnl[vp['entry_date']] += alloc * pnl
-                    virtual_positions = []
-                else:
-                    # Check time exits for each virtual position
-                    remaining = []
-                    for vp in virtual_positions:
-                        days_held = current_idx - vp['entry_idx']
-                        if days_held >= HOLD_DAYS:
-                            if direction == 1:
-                                exit_price = current_row['close'] * (1 - spread)
-                                pnl = (exit_price / vp['entry_price']) - 1
-                            else:
-                                exit_price = current_row['close'] * (1 + spread)
-                                pnl = (vp['entry_price'] / exit_price) - 1
-                            all_trades.append({'pnl': pnl, 'pair': pair, 'date': vp['entry_date'], 'exit': 'TIME'})
-                            alloc = 0.25 * vp['size'] if full_size_per_trade else 0.25 / max_slots * vp['size']
-                            if vp['entry_date'] not in daily_pnl:
-                                daily_pnl[vp['entry_date']] = 0.0
-                            daily_pnl[vp['entry_date']] += alloc * pnl
-                        else:
-                            remaining.append(vp)
-                    virtual_positions = remaining
+                    all_trades.append({'pnl': pnl, 'pair': pair, 'date': vp['entry_date'], 'exit': 'SL'})
+                    alloc = ALLOC_PER_SLOT * vp['size'] if full_size_per_trade else ALLOC_PER_SLOT / max_slots * vp['size']
+                    if vp['entry_date'] not in daily_pnl:
+                        daily_pnl[vp['entry_date']] = 0.0
+                    daily_pnl[vp['entry_date']] += alloc * pnl
+                    continue  # Position closed, don't add to remaining
+
+                # Check time exit
+                if days_held >= HOLD_DAYS:
+                    if direction == 1:
+                        exit_price = current_row['close'] * (1 - spread)
+                        pnl = (exit_price / vp['entry_price']) - 1
+                    else:
+                        exit_price = current_row['close'] * (1 + spread)
+                        pnl = (vp['entry_price'] / exit_price) - 1
+                    all_trades.append({'pnl': pnl, 'pair': pair, 'date': vp['entry_date'], 'exit': 'TIME'})
+                    alloc = ALLOC_PER_SLOT * vp['size'] if full_size_per_trade else ALLOC_PER_SLOT / max_slots * vp['size']
+                    if vp['entry_date'] not in daily_pnl:
+                        daily_pnl[vp['entry_date']] = 0.0
+                    daily_pnl[vp['entry_date']] += alloc * pnl
+                    continue  # Position closed
+
+                remaining.append(vp)
+            virtual_positions = remaining
 
             # Check for new signal
             lower_thresh = np.percentile(prediction_buffer, LOWER_PCT)
@@ -128,7 +125,25 @@ def run_netting_dca_stop(max_slots=5, full_size_per_trade=False):
                 can_add = True
                 # Can't mix directions in netting
                 if virtual_positions and virtual_positions[0]['direction'] != signal:
-                    can_add = False
+                    if close_on_opposite:
+                        # Close all positions at current close price, then allow new entry
+                        direction = virtual_positions[0]['direction']
+                        for vp in virtual_positions:
+                            if direction == 1:
+                                exit_price = current_row['close'] * (1 - spread)
+                                pnl = (exit_price / vp['entry_price']) - 1
+                            else:
+                                exit_price = current_row['close'] * (1 + spread)
+                                pnl = (vp['entry_price'] / exit_price) - 1
+                            all_trades.append({'pnl': pnl, 'pair': pair, 'date': vp['entry_date'], 'exit': 'OPPOSITE'})
+                            alloc = ALLOC_PER_SLOT * vp['size'] if full_size_per_trade else ALLOC_PER_SLOT / max_slots * vp['size']
+                            if vp['entry_date'] not in daily_pnl:
+                                daily_pnl[vp['entry_date']] = 0.0
+                            daily_pnl[vp['entry_date']] += alloc * pnl
+                        virtual_positions = []
+                        can_add = True
+                    else:
+                        can_add = False
                 # Max slots limit
                 if len(virtual_positions) >= max_slots:
                     can_add = False
@@ -175,42 +190,81 @@ def calc_metrics(trades, pnl_dict, leverage=LEVERAGE):
     }
 
 
+def calc_yearly_metrics(trades, pnl_dict, leverage=LEVERAGE):
+    """Calculate yearly performance metrics"""
+    if not trades or not pnl_dict:
+        return {}
+
+    returns = pd.Series(pnl_dict).sort_index()
+    leveraged = returns * leverage
+    trades_df = pd.DataFrame(trades)
+
+    yearly = {}
+    for year in sorted(returns.index.year.unique()):
+        year_mask = returns.index.year == year
+        year_returns = leveraged[year_mask]
+
+        if len(year_returns) < 20:
+            continue
+
+        # Build equity curve for the year
+        equity = [1000]
+        for r in year_returns:
+            equity.append(equity[-1] * (1 + r))
+        equity = np.array(equity[1:])
+
+        year_total = equity[-1] / 1000 - 1
+        year_sharpe = (year_returns.mean() / year_returns.std()) * np.sqrt(252) if year_returns.std() > 0 else 0
+        cummax = np.maximum.accumulate(equity)
+        year_dd = ((equity - cummax) / cummax).min() * 100
+
+        year_trades = trades_df[trades_df['date'].dt.year == year]
+        year_wr = (year_trades['pnl'] > 0).mean() * 100 if len(year_trades) > 0 else 0
+        year_sl = sum(1 for _, t in year_trades.iterrows() if t.get('exit') == 'SL')
+
+        yearly[year] = {
+            'return': year_total * 100,
+            'sharpe': year_sharpe,
+            'max_dd': year_dd,
+            'win_rate': year_wr,
+            'trades': len(year_trades),
+            'sl_exits': year_sl
+        }
+
+    return yearly
+
+
 if __name__ == '__main__':
     print('=' * 70)
-    print('DCA STOP WITH FULL 25% ALLOCATION PER TRADE (IMPLICIT LEVERAGE)')
+    print('8-PAIR SLEEP WELL BACKTEST (Independent Stops)')
     print('=' * 70)
     print()
-    print('This matches the "buggy" backtest allocation:')
-    print('  - Each signal gets full 25% allocation')
-    print('  - Up to 5 overlapping trades per pair = 125% exposure per pair')
-    print('  - 4 pairs × 5 trades = up to 500% total exposure (5x implicit leverage)')
-    print('  - But with DCA stop loss (averaged across entries)')
+    print('Config: 8 pairs, 22.5% alloc/slot, 1.5x leverage, 2% SL, 5-day hold')
     print()
 
-    # Test full size per trade (matches buggy backtest allocation)
-    for max_slots in [3, 5]:
-        trades, pnl = run_netting_dca_stop(max_slots=max_slots, full_size_per_trade=True)
-        m = calc_metrics(trades, pnl)
+    # Run backtest with independent stops
+    print('Running backtest...')
+    trades, pnl = run_netting_dca_stop(max_slots=5, full_size_per_trade=True)
+    m = calc_metrics(trades, pnl)
+    yearly = calc_yearly_metrics(trades, pnl)
 
-        sl_exits = sum(1 for t in trades if t.get('exit') == 'SL')
-        time_exits = sum(1 for t in trades if t.get('exit') == 'TIME')
-
-        print(f'{max_slots} SLOTS, FULL 25% per trade (DCA Stop):')
-        print(f'   Trades: {m["trades"]}')
-        print(f'   Win Rate: {m["win_rate"]:.1f}%')
-        print(f'   Annual Return: {m["annual"]:.1f}%')
-        print(f'   Sharpe: {m["sharpe"]:.2f}')
-        print(f'   Max DD: {m["max_dd"]:.1f}%')
-        print(f'   SL exits: {sl_exits} ({sl_exits/len(trades)*100:.1f}%)')
-        print(f'   Time exits: {time_exits} ({time_exits/len(trades)*100:.1f}%)')
-        print()
-
+    print()
     print('=' * 70)
-    print('COMPARISON')
+    print('OVERALL RESULTS')
     print('=' * 70)
+    print(f'Trades:     {m["trades"]:,}')
+    print(f'Win Rate:   {m["win_rate"]:.1f}%')
+    print(f'Annual:     {m["annual"]:.1f}%')
+    print(f'Sharpe:     {m["sharpe"]:.2f}')
+    print(f'Max DD:     {m["max_dd"]:.1f}%')
+
     print()
-    print('Original buggy backtest (individual stops, full allocation):')
-    print('  3829 trades, 69.0% WR, 65.1% annual, -13.9% DD')
-    print()
-    print('DCA stop should give similar results since it uses same allocation,')
-    print('just with averaged stop loss instead of individual stops.')
+    print('=' * 70)
+    print('YEARLY PERFORMANCE')
+    print('=' * 70)
+    print(f'{"Year":<6} {"Return":>10} {"MaxDD":>10} {"WinRate":>10} {"Trades":>8} {"SL Exits":>10}')
+    print('-' * 70)
+
+    for year in sorted(yearly.keys()):
+        y = yearly[year]
+        print(f'{year:<6} {y["return"]:>9.1f}% {y["max_dd"]:>9.1f}% {y["win_rate"]:>9.1f}% {y["trades"]:>8} {y["sl_exits"]:>10}')

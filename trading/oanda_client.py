@@ -297,6 +297,35 @@ class OandaClient:
 
             return False
 
+    def close_trade(self, trade_id):
+        """
+        Close a specific trade by ID.
+
+        Args:
+            trade_id: OANDA trade ID
+
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        url = f"{self.base_url}/accounts/{self.account_id}/trades/{trade_id}/close"
+
+        try:
+            response = requests.put(url, headers=self.headers, json={})
+            response.raise_for_status()
+
+            print(f"Trade {trade_id} closed successfully")
+            return True
+
+        except requests.exceptions.RequestException as e:
+            print(f"Error closing trade {trade_id}: {e}")
+
+            # If 404, trade was already closed (hit stop/TP)
+            if hasattr(e.response, 'status_code') and e.response.status_code == 404:
+                print(f"Trade {trade_id} not found - likely already closed")
+                return True
+
+            return False
+
     def fetch_latest_data(self, count=500):
         """
         Fetch latest OHLC data for this pair.
