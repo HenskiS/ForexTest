@@ -1,0 +1,44 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.env
+results
+QQQ
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Ignore data files by default
+*.csv
+*.pkl
+
+# But keep essential data files for Sleep Well strategy
+!data/*_1day_oanda.csv
+!data/*_1day_with_spreads.csv
+!optimized_ann_predictions/predictions_*.pkl
+
+# Generated summaries
+*_summary.json
+performance_summary.json
+
+# Temporary/intermediate scripts
+add_*.py
+fix_backtest*.py
+fix_signal*.py
+fix_save_signals.py
+fix_forex_backtest.py
+fix_dynamic_position_sizing.py
+implement_*.py
+update_*.py
+check_results.py
+
+# Keep only the important fix
+!fix_data_leakage.py
+
+# Additional untracked files to ignore
+keep_files.txt
+analyze_multipair_leverage.py
+visualize_*.py
+xgboost_trades_*.csv
