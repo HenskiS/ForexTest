@@ -291,14 +291,15 @@ class MultiPairTrader:
         print("GENERATING SIGNALS AND ENTERING POSITIONS")
         print("="*70)
 
-        # Calculate per-pair position size
-        # With $500 account and 2:1 leverage, we use $125 capital per pair = $250 position
-        capital_per_pair = account_balance / len(self.pairs)
-        position_size_per_pair = capital_per_pair * self.leverage
+        # Calculate per-slot position size (matches backtest: 22.5% allocation per slot)
+        # With $500 account, 22.5% allocation, 2.0x leverage = $225 position per slot
+        ALLOCATION_PER_SLOT = 0.225  # 22.5% of account per slot (matches backtest)
+        capital_per_slot = account_balance * ALLOCATION_PER_SLOT
+        position_size_per_slot = capital_per_slot * self.leverage
 
         print(f"\nAccount balance: ${account_balance:.2f}")
-        print(f"Capital per pair: ${capital_per_pair:.2f}")
-        print(f"Position size per pair: ${position_size_per_pair:.2f} ({self.leverage:.1f}x leverage)")
+        print(f"Allocation per slot: {ALLOCATION_PER_SLOT*100:.1f}% = ${capital_per_slot:.2f}")
+        print(f"Position size per slot: ${position_size_per_slot:.2f} ({self.leverage:.1f}x leverage)")
 
         for pair in self.pairs:
             pm = self.position_managers[pair]
@@ -347,7 +348,7 @@ class MultiPairTrader:
 
             if self.dry_run:
                 print(f"  [DRY RUN] Would place {'LONG' if signal == 1 else 'SHORT'} order:")
-                print(f"    Position size: ${position_size_per_pair:.2f}")
+                print(f"    Position size: ${position_size_per_slot:.2f}")
                 print(f"    Stop Loss: {TradingConfig.STOP_LOSS_PCT*100:.2f}%")
                 if take_profit_pct:
                     print(f"    Take Profit: {take_profit_pct*100:.2f}%")
@@ -358,7 +359,7 @@ class MultiPairTrader:
                 order_result = client.place_order(
                     signal=signal,
                     current_price=current_price,
-                    position_size_dollars=position_size_per_pair,
+                    position_size_dollars=position_size_per_slot,
                     stop_loss_pct=TradingConfig.STOP_LOSS_PCT,
                     take_profit_pct=take_profit_pct
                 )
@@ -368,7 +369,7 @@ class MultiPairTrader:
                     pm.open_position(
                         direction=signal,
                         entry_price=order_result['entry_price'],
-                        position_size=position_size_per_pair,
+                        position_size=position_size_per_slot,
                         trade_id=order_result['trade_id']
                     )
 
@@ -377,7 +378,7 @@ class MultiPairTrader:
                         pair=pair,
                         direction='LONG' if signal == 1 else 'SHORT',
                         entry_price=order_result['entry_price'],
-                        position_size=position_size_per_pair,
+                        position_size=position_size_per_slot,
                         stop_loss=order_result['stop_price'],
                         take_profit=order_result['target_price']
                     )
