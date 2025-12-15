@@ -93,6 +93,7 @@ class NotificationService:
 
     def notify_trade_entry(self, pair, direction, entry_price, position_size, stop_loss, take_profit):
         """Send notification when entering a trade"""
+        tp_str = f"{take_profit:.5f}" if take_profit else "None (time-based exit)"
         message = f"""
 *TRADE OPENED* - {pair}
 
@@ -100,7 +101,7 @@ Direction: {direction}
 Entry Price: {entry_price:.5f}
 Position Size: ${position_size:,.2f}
 Stop Loss: {stop_loss:.5f}
-Take Profit: {take_profit:.5f}
+Take Profit: {tp_str}
 
 Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 """.strip()
