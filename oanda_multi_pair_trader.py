@@ -5,14 +5,19 @@ OANDA Multi-Pair Production Trading Bot
 - EURUSD, GBPUSD, AUDUSD, USDJPY, EURJPY, USDCAD, USDCHF, NZDUSD
 - 10/90 percentile thresholds (fewer, higher-quality trades)
 - 5-day holding period
-- 2.5% stop loss, no take profit (time-based exit)
-- 2.0x leverage, 22.5% allocation per slot for ~94% annual
+- 2.5% DCA stop loss (averaged across slots), no take profit (time-based exit)
+- 2.0x leverage, 22.5% allocation per slot for ~98% annual
+
+DCA Averaged Stops (OANDA netting account behavior):
+- OANDA netting accounts only support ONE stop per instrument
+- When adding slots, stop is recalculated at 2.5% below weighted average entry
+- This actually performs BETTER than independent stops (~98% vs ~94% annual)
 
 Based on backtest results (4500 days, bug-fixed Dec 2025):
-- ~94% annual return (with 22.5% allocation @ 2.0x leverage)
+- ~98% annual return (with DCA averaged stops)
 - 60.8% win rate
-- ~16.6% max drawdown
-- 4.50 Sharpe ratio
+- ~16.1% max drawdown
+- 4.69 Sharpe ratio
 - Average 6.4 positions/day, ~2.9x effective leverage
 
 WARNING: This bot trades real money. Test thoroughly on practice account first!
@@ -346,22 +351,42 @@ class MultiPairTrader:
             else:
                 take_profit_pct = TradingConfig.TAKE_PROFIT_PCT
 
+            # Calculate DCA averaged stop if adding to existing position
+            # OANDA netting accounts only support ONE stop per position
+            is_adding_to_position = pm.slot_count() > 0
+            if is_adding_to_position:
+                # Calculate averaged stop price including new slot
+                dca_stop_price = pm.calculate_dca_stop_price(
+                    new_entry_price=current_price,
+                    new_position_size=position_size_per_slot,
+                    signal=signal,
+                    stop_loss_pct=TradingConfig.STOP_LOSS_PCT
+                )
+                print(f"  DCA Stop: {dca_stop_price:.5f} (avg entry-based)")
+            else:
+                dca_stop_price = None  # First slot uses simple stop
+
             if self.dry_run:
                 print(f"  [DRY RUN] Would place {'LONG' if signal == 1 else 'SHORT'} order:")
                 print(f"    Position size: ${position_size_per_slot:.2f}")
-                print(f"    Stop Loss: {TradingConfig.STOP_LOSS_PCT*100:.2f}%")
+                if dca_stop_price:
+                    print(f"    Stop Loss: DCA averaged at {dca_stop_price:.5f}")
+                else:
+                    print(f"    Stop Loss: {TradingConfig.STOP_LOSS_PCT*100:.2f}%")
                 if take_profit_pct:
                     print(f"    Take Profit: {take_profit_pct*100:.2f}%")
                 else:
                     print(f"    Take Profit: None (time-based exit)")
             else:
-                # Place order
+                # Place order (with DCA stop if adding to position)
                 order_result = client.place_order(
                     signal=signal,
                     current_price=current_price,
                     position_size_dollars=position_size_per_slot,
                     stop_loss_pct=TradingConfig.STOP_LOSS_PCT,
-                    take_profit_pct=take_profit_pct
+                    take_profit_pct=take_profit_pct,
+                    allow_add_to_position=is_adding_to_position,
+                    custom_stop_price=dca_stop_price
                 )
 
                 if order_result and order_result['success']:

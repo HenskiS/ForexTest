@@ -258,6 +258,54 @@ class PositionManager:
         """Return list of all slots"""
         return self.slots.copy()
 
+    def get_average_entry_price(self):
+        """
+        Calculate weighted average entry price across all slots.
+
+        Returns:
+            float: Weighted average entry price, or None if no slots
+        """
+        if not self.slots:
+            return None
+
+        total_size = sum(s['position_size'] for s in self.slots)
+        if total_size == 0:
+            return None
+
+        weighted_sum = sum(s['entry_price'] * s['position_size'] for s in self.slots)
+        return weighted_sum / total_size
+
+    def calculate_dca_stop_price(self, new_entry_price, new_position_size, signal, stop_loss_pct=0.025):
+        """
+        Calculate the DCA (averaged) stop loss price including a new slot.
+
+        For OANDA netting accounts, all slots share ONE stop loss set at
+        stop_loss_pct below the weighted average entry price.
+
+        Args:
+            new_entry_price: Entry price for the new slot being added
+            new_position_size: Position size of the new slot
+            signal: Direction of the trade (1=long, -1=short)
+            stop_loss_pct: Stop loss percentage (default 2.5%)
+
+        Returns:
+            float: Stop price for the position (2.5% from averaged entry)
+        """
+        # Calculate total including new slot
+        total_size = sum(s['position_size'] for s in self.slots) + new_position_size
+        weighted_sum = sum(s['entry_price'] * s['position_size'] for s in self.slots)
+        weighted_sum += new_entry_price * new_position_size
+
+        avg_entry = weighted_sum / total_size
+
+        # Stop is 2.5% from average entry
+        if signal == 1:  # Long
+            stop_price = avg_entry * (1 - stop_loss_pct)
+        else:  # Short
+            stop_price = avg_entry * (1 + stop_loss_pct)
+
+        return stop_price
+
     def _count_business_days(self, start_date, end_date):
         """
         Count business days (weekdays) between two dates.

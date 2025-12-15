@@ -140,7 +140,8 @@ class OandaClient:
             print(f"Error fetching open trades: {e}")
             return None
 
-    def place_order(self, signal, current_price, position_size_dollars, stop_loss_pct, take_profit_pct=None):
+    def place_order(self, signal, current_price, position_size_dollars, stop_loss_pct,
+                    take_profit_pct=None, allow_add_to_position=False, custom_stop_price=None):
         """
         Place market order with stop loss and optional take profit.
 
@@ -150,21 +151,27 @@ class OandaClient:
             position_size_dollars: Position size in dollars
             stop_loss_pct: Stop loss as decimal (e.g., 0.02 for 2%)
             take_profit_pct: Take profit as decimal (e.g., 0.03 for 3%), or None for no TP
+            allow_add_to_position: If True, allows adding to existing position (DCA)
+            custom_stop_price: If provided, uses this exact stop price (for averaged DCA stops)
 
         Returns:
             dict: Order fill info with keys 'success', 'entry_price', 'trade_id', or None if failed
         """
         instrument = self.fetcher.get_instrument_name(self.pair)
 
-        # SAFETY CHECK: Verify no existing position
+        # SAFETY CHECK: Verify no existing position (unless adding to position for DCA)
         existing_position = self.get_open_positions()
-        if existing_position:
+        if existing_position and not allow_add_to_position:
             print(f"\nWARNING: Open position already exists at OANDA!")
             print(f"  Long units: {existing_position['long_units']}")
             print(f"  Short units: {existing_position['short_units']}")
             print(f"  Unrealized P&L: ${existing_position['unrealized_pl']:.2f}")
             print(f"  Skipping new order to prevent duplicate trade")
+            print(f"  (Use allow_add_to_position=True for DCA)")
             return None
+        elif existing_position and allow_add_to_position:
+            print(f"\n  Adding to existing position (DCA mode)")
+            print(f"  Current position: {existing_position['long_units'] or existing_position['short_units']} units")
 
         # Calculate units based on position size
         # For forex pairs, units represent base currency amount
@@ -189,12 +196,19 @@ class OandaClient:
             price_precision = 5
 
         # Calculate stop/target prices
-        if signal == 1:  # Long
+        if custom_stop_price is not None:
+            # Use DCA averaged stop price
+            stop_price = custom_stop_price
+        elif signal == 1:  # Long
             stop_price = current_price * (1 - stop_loss_pct)
+        else:  # Short
+            stop_price = current_price * (1 + stop_loss_pct)
+
+        # Calculate target and order units
+        if signal == 1:  # Long
             target_price = current_price * (1 + take_profit_pct) if take_profit_pct else None
             order_units = abs(units)
         else:  # Short
-            stop_price = current_price * (1 + stop_loss_pct)
             target_price = current_price * (1 - take_profit_pct) if take_profit_pct else None
             order_units = -abs(units)
 
@@ -224,7 +238,10 @@ class OandaClient:
             print(f"\nPlacing {'LONG' if signal == 1 else 'SHORT'} order:")
             print(f"  Units: {order_units}")
             print(f"  Entry: {current_price:.5f}")
-            print(f"  Stop Loss: {stop_price:.5f} ({stop_loss_pct*100:.2f}%)")
+            if custom_stop_price is not None:
+                print(f"  Stop Loss: {stop_price:.5f} (DCA averaged)")
+            else:
+                print(f"  Stop Loss: {stop_price:.5f} ({stop_loss_pct*100:.2f}%)")
             if target_price is not None:
                 print(f"  Take Profit: {target_price:.5f} ({take_profit_pct*100:.2f}%)")
             else:
