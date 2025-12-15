@@ -5,15 +5,15 @@ OANDA Multi-Pair Production Trading Bot
 - EURUSD, GBPUSD, AUDUSD, USDJPY, EURJPY, USDCAD, USDCHF, NZDUSD
 - 10/90 percentile thresholds (fewer, higher-quality trades)
 - 5-day holding period
-- 2% stop loss, no take profit (time-based exit)
-- 1.5x leverage, 22.5% allocation per slot for ~100% annual
+- 2.5% stop loss, no take profit (time-based exit)
+- 2.0x leverage, 22.5% allocation per slot for ~94% annual
 
-Based on backtest results (4500 days):
-- ~100% annual return (with 22.5% allocation @ 1.5x leverage)
-- 63.5% win rate
-- ~14% max drawdown
-- 5.47 Sharpe ratio
-- Average 6.4 positions/day, ~2.2x effective leverage
+Based on backtest results (4500 days, bug-fixed Dec 2025):
+- ~94% annual return (with 22.5% allocation @ 2.0x leverage)
+- 60.8% win rate
+- ~16.6% max drawdown
+- 4.50 Sharpe ratio
+- Average 6.4 positions/day, ~2.9x effective leverage
 
 WARNING: This bot trades real money. Test thoroughly on practice account first!
 """
@@ -35,7 +35,7 @@ from trading import (
 class MultiPairTrader:
     """Manages trading across multiple currency pairs"""
 
-    def __init__(self, pairs, practice=True, leverage=1.5, dry_run=False, model_type='xgboost'):
+    def __init__(self, pairs, practice=True, leverage=2.0, dry_run=False, model_type='ann'):
         """
         Initialize multi-pair trader.
 
@@ -44,7 +44,7 @@ class MultiPairTrader:
             practice: Use practice account if True
             leverage: Leverage multiplier (e.g., 2.0 = 2:1 leverage)
             dry_run: Simulate only, don't place actual trades
-            model_type: 'xgboost' or 'ann' (default: 'xgboost')
+            model_type: 'xgboost' or 'ann' (default: 'ann')
         """
         self.pairs = pairs
         self.practice = practice
@@ -442,7 +442,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='OANDA Multi-Pair Trader - 4 Pair Diversified Strategy')
     parser.add_argument('--live', action='store_true', help='Use LIVE account (default: practice)')
     parser.add_argument('--dry-run', action='store_true', help='Simulate only, do not place trades')
-    parser.add_argument('--leverage', type=float, default=1.5, help='Leverage multiplier (default: 1.5)')
+    parser.add_argument('--leverage', type=float, default=2.0, help='Leverage multiplier (default: 2.0)')
     parser.add_argument('--pairs', nargs='+', default=TradingConfig.DEFAULT_PAIRS,
                         help='Currency pairs to trade (default: EURUSD GBPUSD AUDUSD USDJPY)')
     parser.add_argument('--model', type=str, default='ann', choices=['xgboost', 'ann'],

@@ -67,7 +67,12 @@ class TradingModel:
         """Load prediction buffer for percentile calculations"""
         if os.path.exists(self.buffer_file):
             with open(self.buffer_file, 'rb') as f:
-                self.prediction_buffer = pickle.load(f)
+                loaded = pickle.load(f)
+            # Ensure it's a list (may have been saved as numpy array)
+            if isinstance(loaded, np.ndarray):
+                self.prediction_buffer = loaded.tolist()
+            else:
+                self.prediction_buffer = list(loaded)
             print(f"Loaded prediction buffer: {len(self.prediction_buffer)} predictions")
         else:
             self.prediction_buffer = []
