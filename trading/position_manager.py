@@ -127,13 +127,22 @@ class PositionManager:
         with open(self.state_file, 'w') as f:
             json.dump(state, f, indent=2)
 
-    def can_add_slot(self, signal, max_slots=None):
+    def has_slot_entered_today(self):
+        """Check if any slot was entered today (prevents duplicate entries on re-run)"""
+        today = datetime.now().date()
+        for slot in self.slots:
+            if slot['entry_date'] and slot['entry_date'].date() == today:
+                return True
+        return False
+
+    def can_add_slot(self, signal, max_slots=None, allow_same_day=False):
         """
         Check if a new slot can be added for the given signal.
 
         Args:
             signal: 1 for long, -1 for short
             max_slots: Maximum slots allowed (default: MAX_SLOTS)
+            allow_same_day: If False, prevents adding slot if one was already entered today
 
         Returns:
             bool: True if slot can be added
@@ -147,6 +156,10 @@ class PositionManager:
 
         # Can't add opposite direction (FIFO compliance)
         if self.direction != 0 and self.direction != signal:
+            return False
+
+        # Can't add if already entered today (unless explicitly allowed)
+        if not allow_same_day and self.has_slot_entered_today():
             return False
 
         return True

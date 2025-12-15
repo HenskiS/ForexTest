@@ -321,6 +321,8 @@ class MultiPairTrader:
             if not pm.can_add_slot(signal):
                 if pm.direction != 0 and pm.direction != signal:
                     print(f"\n{pair}: Signal is opposite direction, skipping (FIFO)")
+                elif pm.has_slot_entered_today():
+                    print(f"\n{pair}: Already entered today, skipping (one entry per day)")
                 else:
                     print(f"\n{pair}: Max slots ({pm.MAX_SLOTS}) reached, skipping")
                 continue
