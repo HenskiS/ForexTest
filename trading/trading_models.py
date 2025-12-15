@@ -277,7 +277,7 @@ class TradingModel:
         lower_threshold = np.percentile(self.prediction_buffer, lower_percentile)
         upper_threshold = np.percentile(self.prediction_buffer, upper_percentile)
 
-        print(f"\nSignal Generation ({self.model_type.upper()}):")
+        print(f"\nSignal Generation for {self.pair} ({self.model_type.upper()}):")
         print(f"  Prediction: {prediction:.6f}")
         if lower_percentile == upper_percentile:
             # Median split (50/50)
