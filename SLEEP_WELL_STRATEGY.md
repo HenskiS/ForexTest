@@ -10,7 +10,7 @@
 | Architecture | (13, 20, 31) layers |
 | Thresholds | 10/90 percentile |
 | Hold Period | 5 trading days |
-| Stop Loss | 2.5% per slot (independent) |
+| Stop Loss | 2.5% per trade (independent) |
 | Take Profit | None (time-based exit) |
 | Leverage | 2.0x |
 | Pairs | 8: EURUSD, GBPUSD, AUDUSD, USDJPY, EURJPY, USDCAD, USDCHF, NZDUSD |

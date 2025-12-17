@@ -351,42 +351,27 @@ class MultiPairTrader:
             else:
                 take_profit_pct = TradingConfig.TAKE_PROFIT_PCT
 
-            # Calculate DCA averaged stop if adding to existing position
-            # OANDA netting accounts only support ONE stop per position
+            # Each trade gets its own independent stop loss (2.5% from its entry)
+            # OANDA tracks separate trades even in netting accounts
             is_adding_to_position = pm.slot_count() > 0
-            if is_adding_to_position:
-                # Calculate averaged stop price including new slot
-                dca_stop_price = pm.calculate_dca_stop_price(
-                    new_entry_price=current_price,
-                    new_position_size=position_size_per_slot,
-                    signal=signal,
-                    stop_loss_pct=TradingConfig.STOP_LOSS_PCT
-                )
-                print(f"  DCA Stop: {dca_stop_price:.5f} (avg entry-based)")
-            else:
-                dca_stop_price = None  # First slot uses simple stop
 
             if self.dry_run:
                 print(f"  [DRY RUN] Would place {'LONG' if signal == 1 else 'SHORT'} order:")
                 print(f"    Position size: ${position_size_per_slot:.2f}")
-                if dca_stop_price:
-                    print(f"    Stop Loss: DCA averaged at {dca_stop_price:.5f}")
-                else:
-                    print(f"    Stop Loss: {TradingConfig.STOP_LOSS_PCT*100:.2f}%")
+                print(f"    Stop Loss: {TradingConfig.STOP_LOSS_PCT*100:.2f}% (independent)")
                 if take_profit_pct:
                     print(f"    Take Profit: {take_profit_pct*100:.2f}%")
                 else:
                     print(f"    Take Profit: None (time-based exit)")
             else:
-                # Place order (with DCA stop if adding to position)
+                # Place order with independent stop (each trade has own SL)
                 order_result = client.place_order(
                     signal=signal,
                     current_price=current_price,
                     position_size_dollars=position_size_per_slot,
                     stop_loss_pct=TradingConfig.STOP_LOSS_PCT,
                     take_profit_pct=take_profit_pct,
-                    allow_add_to_position=is_adding_to_position,
-                    custom_stop_price=dca_stop_price
+                    allow_add_to_position=is_adding_to_position
                 )
 
                 if order_result and order_result['success']:
