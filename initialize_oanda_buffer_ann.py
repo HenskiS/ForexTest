@@ -9,17 +9,26 @@ Run this on your desktop (faster) and then copy the buffer files to your server.
 """
 import os
 import sys
+import argparse
 import pandas as pd
 import numpy as np
 from trading import TradingConfig, OandaClient
 from trading.trading_models import TradingModel
 
+# Parse command line arguments
+parser = argparse.ArgumentParser(description='Initialize ANN prediction buffers')
+parser.add_argument('--live', action='store_true', help='Use LIVE account instead of practice')
+args = parser.parse_args()
+
+PRACTICE_MODE = not args.live
+
 print("="*100)
 print("ANN PREDICTION BUFFER INITIALIZATION")
 print("="*100)
+print(f"Mode: {'LIVE' if not PRACTICE_MODE else 'PRACTICE'} account")
 print()
 
-PAIRS = TradingConfig.DEFAULT_PAIRS  # ['EURUSD', 'GBPUSD', 'AUDUSD', 'USDJPY']
+PAIRS = TradingConfig.DEFAULT_PAIRS  # 8-pair Sleep Well portfolio
 BUFFER_SIZE = TradingConfig.PREDICTION_BUFFER_SIZE  # 200
 TRAIN_WINDOW = TradingConfig.TRAIN_WINDOW_SIZE  # 378
 
@@ -36,9 +45,9 @@ for pair in PAIRS:
     print(f"INITIALIZING BUFFER FOR {pair}")
     print(f"{'='*100}\n")
 
-    # Initialize client and model
-    client = OandaClient(pair, practice=True)
-    model = TradingModel(pair, model_type='ann')
+    # Initialize client and model (verbose=False for cleaner output during batch generation)
+    client = OandaClient(pair, practice=PRACTICE_MODE)
+    model = TradingModel(pair, model_type='ann', verbose=False)
 
     # Fetch enough data for training + buffer
     # We need: TRAIN_WINDOW days for training + BUFFER_SIZE days to generate predictions

@@ -116,40 +116,8 @@ def run_backtest(pair_data, start_date=None, end_date=None, leverage=2.0):
             current_row = df.iloc[current_idx]
             spread = current_row['spread_pct']
 
-            # Process time exits first
-            remaining_slots = []
-            for slot in slots:
-                days_held = current_idx - slot['entry_idx']
-
-                if days_held >= HOLD_DAYS:
-                    # Time exit at open
-                    direction = slot['direction']
-                    if direction == 1:
-                        exit_price = current_row['open'] * (1 - spread)
-                        pnl = (exit_price / slot['entry_price']) - 1
-                    else:
-                        exit_price = current_row['open'] * (1 + spread)
-                        pnl = (slot['entry_price'] / exit_price) - 1
-
-                    all_trades.append({
-                        'pair': pair,
-                        'entry_date': slot['entry_date'],
-                        'exit_date': current_date,
-                        'direction': direction,
-                        'pnl': pnl,
-                        'exit_type': 'TIME'
-                    })
-
-                    # Add to daily PnL on entry date
-                    if slot['entry_date'] not in daily_pnl:
-                        daily_pnl[slot['entry_date']] = 0.0
-                    daily_pnl[slot['entry_date']] += ALLOC_PER_SLOT * pnl
-                else:
-                    remaining_slots.append(slot)
-
-            slots = remaining_slots
-
-            # Check INDEPENDENT stop losses (each slot has its own stop)
+            # Check INDEPENDENT stop losses FIRST (each slot has its own stop)
+            # This must be checked before time exits to match test_dca_stop_fixed.py
             if slots:
                 direction = slots[0]['direction']
                 still_open = []
@@ -187,6 +155,39 @@ def run_backtest(pair_data, start_date=None, end_date=None, leverage=2.0):
                         still_open.append(slot)
 
                 slots = still_open
+
+            # Process time exits AFTER stop losses
+            remaining_slots = []
+            for slot in slots:
+                days_held = current_idx - slot['entry_idx']
+
+                if days_held >= HOLD_DAYS:
+                    # Time exit at open
+                    direction = slot['direction']
+                    if direction == 1:
+                        exit_price = current_row['open'] * (1 - spread)
+                        pnl = (exit_price / slot['entry_price']) - 1
+                    else:
+                        exit_price = current_row['open'] * (1 + spread)
+                        pnl = (slot['entry_price'] / exit_price) - 1
+
+                    all_trades.append({
+                        'pair': pair,
+                        'entry_date': slot['entry_date'],
+                        'exit_date': current_date,
+                        'direction': direction,
+                        'pnl': pnl,
+                        'exit_type': 'TIME'
+                    })
+
+                    # Add to daily PnL on entry date
+                    if slot['entry_date'] not in daily_pnl:
+                        daily_pnl[slot['entry_date']] = 0.0
+                    daily_pnl[slot['entry_date']] += ALLOC_PER_SLOT * pnl
+                else:
+                    remaining_slots.append(slot)
+
+            slots = remaining_slots
 
             # Check for new signal
             lower_thresh = np.percentile(prediction_buffer, LOWER_PCT)

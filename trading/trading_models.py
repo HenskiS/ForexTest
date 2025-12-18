@@ -5,6 +5,7 @@ XGBoost and ANN model training, prediction, and signal generation.
 """
 import os
 import pickle
+import warnings
 import numpy as np
 import xgboost as xgb
 from sklearn.neural_network import MLPRegressor
@@ -12,20 +13,26 @@ from sklearn.preprocessing import MinMaxScaler
 from .config import TradingConfig
 from .market_utils import calculate_technical_features
 
+# Suppress sklearn convergence warnings during training
+warnings.filterwarnings('ignore', message='Stochastic Optimizer: Maximum iterations.*reached and the optimization hasn\'t converged yet.*')
+
 
 class TradingModel:
     """Trading model with support for XGBoost and ANN"""
 
-    def __init__(self, pair, model_type='xgboost'):
+    def __init__(self, pair, model_type='xgboost', verbose=True, load_buffer=True):
         """
         Initialize trading model for a pair.
 
         Args:
             pair: Forex pair (e.g., 'EURUSD')
             model_type: 'xgboost' or 'ann' (default: 'xgboost')
+            verbose: Print progress messages (default: True)
+            load_buffer: Load prediction buffer from disk (default: True)
         """
         self.pair = pair.upper()
         self.model_type = model_type.lower()
+        self.verbose = verbose
 
         if self.model_type not in ['xgboost', 'ann']:
             raise ValueError(f"Invalid model_type: {model_type}. Must be 'xgboost' or 'ann'")
@@ -41,10 +48,12 @@ class TradingModel:
         # Load hyperparameters
         self.best_params = self.load_hyperparameters()
 
-        # Load prediction buffer
-        self.load_prediction_buffer()
+        # Load prediction buffer (optional)
+        if load_buffer:
+            self.load_prediction_buffer()
 
-        print(f"Initialized {self.model_type.upper()} model for {self.pair}")
+        if self.verbose:
+            print(f"Initialized {self.model_type.upper()} model for {self.pair}")
 
     def load_hyperparameters(self):
         """Load optimized hyperparameters or use defaults"""
@@ -175,9 +184,10 @@ class TradingModel:
         Returns:
             tuple: (trained model, scaler, clean dataframe with features)
         """
-        print(f"\n{'='*70}")
-        print(f"Training ANN model on last {TradingConfig.TRAIN_WINDOW_SIZE} days...")
-        print(f"{'='*70}")
+        if self.verbose:
+            print(f"\n{'='*70}")
+            print(f"Training ANN model on last {TradingConfig.TRAIN_WINDOW_SIZE} days...")
+            print(f"{'='*70}")
 
         # Calculate features
         df_with_features = calculate_technical_features(df.copy())
@@ -197,8 +207,9 @@ class TradingModel:
         # Train on last N days that have targets (excludes today to prevent look-ahead)
         train_data = df_with_target.iloc[-TradingConfig.TRAIN_WINDOW_SIZE:].copy()
 
-        print(f"Training data: {len(train_data)} days ({train_data.index[0].date()} to {train_data.index[-1].date()})")
-        print(f"(1-day gap: training excludes today to prevent look-ahead bias)")
+        if self.verbose:
+            print(f"Training data: {len(train_data)} days ({train_data.index[0].date()} to {train_data.index[-1].date()})")
+            print(f"(1-day gap: training excludes today to prevent look-ahead bias)")
 
         # Prepare training data
         X_train = train_data[TradingConfig.TECHNICAL_FEATURES].values
@@ -212,10 +223,11 @@ class TradingModel:
         self.model = MLPRegressor(**self.best_params)
         self.model.fit(X_train_scaled, y_train)
 
-        print(f"ANN model trained successfully")
-        print(f"  Architecture: {self.best_params['hidden_layer_sizes']}")
-        print(f"  Solver: {self.best_params['solver'].upper()}")
-        print(f"  Learning rate: {self.best_params['learning_rate_init']}")
+        if self.verbose:
+            print(f"ANN model trained successfully")
+            print(f"  Architecture: {self.best_params['hidden_layer_sizes']}")
+            print(f"  Solver: {self.best_params['solver'].upper()}")
+            print(f"  Learning rate: {self.best_params['learning_rate_init']}")
 
         return self.model, self.scaler, df_clean
 
@@ -239,7 +251,8 @@ class TradingModel:
         # Predict
         prediction = self.model.predict(X_today_scaled)[0]
 
-        print(f"\nPrediction for today: {prediction:.6f}")
+        if self.verbose:
+            print(f"\nPrediction for today: {prediction:.6f}")
 
         return prediction
 

@@ -83,7 +83,7 @@ class OandaDataFetcher:
 
         raise ValueError(f"Unknown pair: {pair}. Use standard format like 'EURUSD'")
 
-    def get_historical_data(self, pair, count=756, granularity='D', daily_alignment=17):
+    def get_historical_data(self, pair, count=756, granularity='D', daily_alignment=9):
         """
         Fetch historical candle data from OANDA.
 
@@ -96,9 +96,9 @@ class OandaDataFetcher:
                 'H4' = 4 hours
                 'M15' = 15 minutes
                 etc.
-            daily_alignment: Hour (0-23 EST) when daily candles reset (default: 17 = 5 PM)
-                Use 9 for 9 AM EST alignment (better spreads)
-                Use 17 for 5 PM EST alignment (default OANDA)
+            daily_alignment: Hour (0-23 EST) when daily candles reset (default: 9 = 9 AM EST)
+                Use 9 for 9 AM EST alignment (better spreads, matches production)
+                Use 17 for 5 PM EST alignment (NYC market close)
 
         Returns:
             DataFrame with OHLCV data
@@ -327,6 +327,7 @@ if __name__ == "__main__":
     parser.add_argument('--live', action='store_true', help='Use LIVE account instead of practice')
     parser.add_argument('--pair', type=str, default='EURUSD', help='Currency pair (e.g., EURUSD, GBPUSD)')
     parser.add_argument('--count', type=int, default=5000, help='Number of candles to fetch (max 5000)')
+    parser.add_argument('--daily-alignment', type=int, default=9, help='Daily candle alignment hour in EST (0-23). Use 9 for 9 AM EST, 17 for 5 PM EST (default: 9)')
     args = parser.parse_args()
 
     PAIR = args.pair.upper()
@@ -357,7 +358,7 @@ if __name__ == "__main__":
         # Test 2: Get historical daily data
         print(f"\n\nHistorical Daily Data (last {args.count} days)")
         print("-" * 70)
-        df = fetcher.get_historical_data(PAIR, count=args.count, granularity='D')
+        df = fetcher.get_historical_data(PAIR, count=args.count, granularity='D', daily_alignment=args.daily_alignment)
 
         if not df.empty:
             print(f"\nFirst 5 rows:")
