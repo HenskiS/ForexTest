@@ -107,23 +107,8 @@ python initialize_oanda_buffer_ann.py --live
 ### Step 4: Generate Backtest Predictions (Optional)
 
 ```bash
-# Full generation (entire historical dataset, ~6-10 hours)
-python generate_backtest_predictions.py
-
-# Update mode: only generate new predictions since last run (much faster!)
-python generate_backtest_predictions.py --update
-
-# Generate 500 predictions per pair (will skip if already have 500+)
-python generate_backtest_predictions.py --max-predictions 500
-
-# Generate 500 predictions, adding to existing (e.g., have 250, will generate 250 more)
-python generate_backtest_predictions.py --max-predictions 500
-
-# Force regenerate 500 predictions even if we already have them
-python generate_backtest_predictions.py --max-predictions 500 --force
-
-# Use XGBoost model instead of ANN
-python generate_backtest_predictions.py --model xgboost
+# Train all 8 pairs (~5-10 min per pair with parallel execution)
+python train_all_pairs_optimized_hyperparams.py
 ```
 
 ## After Setup
@@ -163,8 +148,8 @@ ForexTest/
 ├── initialize_project.py           # Interactive setup script
 ├── oanda_data_fetcher.py           # OHLC data fetcher
 ├── fetch_spread_data.py            # Spread data fetcher
-├── initialize_oanda_buffer_ann.py  # Prediction buffer initializer
-└── generate_backtest_predictions.py # Backtest prediction generator
+├── initialize_oanda_buffer_ann.py        # Prediction buffer initializer
+└── train_all_pairs_optimized_hyperparams.py  # Backtest prediction generator
 ```
 
 ## Troubleshooting

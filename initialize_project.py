@@ -332,13 +332,13 @@ def main():
             print("It generates predictions for the entire historical dataset.")
             print("Only needed if you want to run backtests (test_dca_stop_fixed.py).")
             if ask_yes_no("Proceed with backtest prediction generation?", default=False):
-                run_script('generate_backtest_predictions.py', 'Backtest prediction generation')
+                run_script('train_all_pairs_optimized_hyperparams.py', 'Backtest prediction generation')
     else:
         print("Backtest predictions not found.")
         print("\nThis step is OPTIONAL - only needed for running backtests.")
         print("[!] WARNING: This takes VERY long (~6-10 hours on most machines)")
         if ask_yes_no("Generate backtest predictions?", default=False):
-            run_script('generate_backtest_predictions.py', 'Backtest prediction generation')
+            run_script('train_all_pairs_optimized_hyperparams.py', 'Backtest prediction generation')
 
     # Final summary
     print_header("Initialization Complete!")
