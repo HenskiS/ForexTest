@@ -34,9 +34,9 @@ BEST_CONFIG = {
 }
 
 PAIRS = ['EURUSD', 'GBPUSD', 'AUDUSD', 'USDJPY', 'EURJPY', 'USDCAD', 'USDCHF', 'NZDUSD']
-TEST_DAYS = 4500
+TEST_DAYS = 450  # Generate 450 days for comparison
 TRAIN_WINDOW = 378
-OUTPUT_DIR = 'optimized_ann_predictions'
+OUTPUT_DIR = 'optimized_ann_predictions_450'  # Separate folder for 450-day predictions
 
 # Create output directory
 os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -151,7 +151,8 @@ for pair_idx, pair in enumerate(PAIRS):
             print(f"  Progress: {i}/{len(test_indices)} ({i/len(test_indices)*100:.1f}%)")
 
         # Get training window
-        train_end = test_idx
+        # FIX: Stop 1 day earlier to avoid lookahead (target uses next day's data)
+        train_end = test_idx - 1
         train_start = max(0, train_end - TRAIN_WINDOW)
 
         X_window = df[feature_cols].iloc[train_start:train_end]
@@ -174,21 +175,35 @@ for pair_idx, pair in enumerate(PAIRS):
     print()
     print("Training complete!")
 
-    # Save predictions
+    # Get dates for the test period
+    test_dates = df.index[test_indices].tolist()
+
+    # Save predictions - USE DATES FOR MATCHING, NOT INDICES
+    # WARNING: test_indices are relative to the cleaned df (after dropna)
+    # Always match by date to avoid the 28-day index shift bug
     checkpoint = {
         'pair': pair,
         'predictions': predictions,
-        'test_indices': test_indices,
+        'dates': test_dates,  # PRIMARY KEY - use this for matching
+        'test_indices_cleaned_df': test_indices,  # Only valid for this exact df
         'config': BEST_CONFIG,
         'feature_cols': feature_cols,
-        'dates': df.index[test_indices].tolist()
     }
 
     checkpoint_file = os.path.join(OUTPUT_DIR, f'predictions_{pair}.pkl')
     with open(checkpoint_file, 'wb') as f:
         pickle.dump(checkpoint, f)
 
+    # Also save CSV for easy backtesting (date-based, no index issues)
+    csv_df = pd.DataFrame({
+        'date': test_dates,
+        'prediction': predictions
+    })
+    csv_file = os.path.join(OUTPUT_DIR, f'predictions_{pair}.csv')
+    csv_df.to_csv(csv_file, index=False)
+
     print(f"Saved: {checkpoint_file}")
+    print(f"Saved: {csv_file}")
 
     # Quick stats
     print(f"\nPrediction statistics:")
@@ -204,7 +219,8 @@ print(f"{'='*100}\n")
 print(f"Predictions saved to: {OUTPUT_DIR}/")
 print(f"Files created:")
 for pair in PAIRS:
-    print(f"  - predictions_{pair}.pkl")
+    print(f"  - predictions_{pair}.pkl (pickle with config)")
+    print(f"  - predictions_{pair}.csv (date-based, for backtesting)")
 
 print("\nNext steps:")
 print("  1. Run multi-pair backtest with different SL/TP combinations")
